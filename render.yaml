@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: welive
+    runtime: node
+    runtimeVersion: 22
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080

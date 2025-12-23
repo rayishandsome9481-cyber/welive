@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>WeLIVE Fullscreen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="main.css">
+</head>
+
+<body>
+    <div id="app">
+        <header>
+            <h1>WeLIVE:我們來接你了ㄛ</h1>
+            <div id="currentIdentity" class="hidden">
+                <button id="startPollBtn" title="發起投票" aria-label="發起投票">
+                    <!-- hand SVG icon -->
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true">
+                        <path
+                            d="M8 2v10M12 2v10M16 2v10M4 12h16a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6a2 2 0 012-2z"
+                            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+                <button id="shareScreenBtn" title="分享螢幕" aria-label="分享螢幕">
+                    <!-- simple screen SVG icon -->
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.5"
+                            fill="none"></rect>
+                        <path d="M8 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M12 16v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                </button>
+                <button id="recordScreenBtn" title="錄製螢幕" aria-label="錄製螢幕">
+                    <!-- record circle SVG icon -->
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"></circle>
+                        <circle cx="12" cy="12" r="4" fill="currentColor"></circle>
+                    </svg>
+                </button>
+                <span id="recordingIndicator" style="display:none; color:red; font-weight:bold; margin-left:8px;">
+                    🔴 錄製中
+                </span>
+                <span>暱稱：<span id="currentDisplayName"></span></span>
+                <button id="changeNameBtn">變更暱稱</button>
+            </div>
+        </header>
+
+        <main>
+            <section id="profileSection">
+                <h2>輸入暱稱即可開始直播聊天</h2>
+                <form id="profileForm">
+                    <input type="text" id="displayNameInput" placeholder="暱稱（顯示在聊天室房間列表）" maxlength="32" required>
+                    <button type="submit">開始使用</button>
+                </form>
+                <p class="hint">不需註冊，只要設定暱稱就能建立或加入房間。</p>
+            </section>
+
+            <section id="roomsSection" class="hidden">
+                <div class="rooms-header">
+                    <h2>房間列表</h2>
+                    <form id="createRoomForm">
+                        <input type="text" id="newRoomName" placeholder="輸入房間名稱" maxlength="48" required>
+                        <button type="submit">建立房間</button>
+                    </form>
+                </div>
+                <ul id="roomsList"></ul>
+            </section>
+
+            <section id="conferenceSection" class="hidden">
+                <div id="conferenceLayout">
+                    <aside id="sidebar">
+                        <h3>房間：<span id="roomName"></span></h3>
+                        <div class="participants-header">
+                            <h4>在線成員</h4>
+                            <!-- requestSongBtn will be dynamically added here -->
+                        </div>
+                        <ul id="participantsList"></ul>
+
+                        <div id="controls">
+                            <button id="toggleCamera">關閉鏡頭</button>
+                            <button id="toggleMic">關閉麥克風</button>
+                            <button id="leaveRoomBtn">離開房間</button>
+                            <button id="clearPrompterBtn" class="hidden">清除提詞</button>
+                        </div>
+
+                        <!-- pollContainer removed from sidebar; floating poll window is rendered separately -->
+
+                        <div id="chat">
+                            <div id="messages"></div>
+                            <div class="chat-input">
+                                <input type="text" id="messageInput" placeholder="輸入訊息...">
+                                <button id="sendBtn">送出</button>
+                            </div>
+                            <div class="reactions">
+                                <button class="reactionBtn" data-emoji="👏">👏</button>
+                                <button class="reactionBtn" data-emoji="🚀">🚀</button>
+                                <button id="lyricsBtn" title="搜尋歌詞">🔍</button>
+                            </div>
+
+                        </div>
+                    </aside>
+
+                    <div id="stage">
+                        <div id="localContainer" class="video-card" data-user="self">
+                            <video id="localVideo" autoplay playsinline muted></video>
+                            <span class="label">我</span>
+                        </div>
+                        <!-- 房主視訊會動態插入這裡 -->
+                        <div id="remoteGrid" class="members-grid"></div>
+                    </div>
+                    <!-- 提詞機/預留區塊 -->
+
+                    <div id="prompter" aria-hidden="true"></div>
+                </div>
+            </section>
+        </main>
+
+        <div id="notification" class="hidden"></div>
+
+        <!-- Lyrics search modal (keeps chat area unchanged) -->
+        <div id="lyricsModal" class="modal hidden" aria-hidden="true">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="lyricsModalTitle">
+                <h3 id="lyricsModalTitle">搜尋歌詞</h3>
+                <div class="modal-body">
+                    <label>歌名<br><input type="text" id="songInput" placeholder="歌名"></label>
+                    <label>歌手<br><input type="text" id="artistInput" placeholder="歌手"></label>
+                    <div id="lyricsResult" class="lyrics-result hidden" aria-live="polite"></div>
+                </div>
+                <div class="modal-actions">
+                    <button id="searchLyricsBtn">搜尋</button>
+                    <button id="cancelLyricsBtn">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Poll modal -->
+        <div id="pollModal" class="modal hidden" aria-hidden="true">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="pollModalTitle">
+                <h3 id="pollModalTitle">發起投票</h3>
+                <div class="modal-body">
+                    <label>問題<br><input type="text" id="pollQuestionInput" placeholder="投票問題（必填）"></label>
+                    <div class="poll-settings">
+                        <label><input type="checkbox" id="pollMultipleChoice"> 可複選</label>
+                    </div>
+                    <label>選項（每行一個，請在底線處填入）</label>
+                    <div class="poll-options-inputs" id="pollOptionsContainer">
+                        <div class="poll-option-wrapper">
+                            <input type="text" class="poll-option-input" placeholder="________" maxlength="120">
+                        </div>
+                        <div class="poll-option-wrapper">
+                            <input type="text" class="poll-option-input" placeholder="________" maxlength="120">
+                        </div>
+                        <div class="poll-option-wrapper">
+                            <input type="text" class="poll-option-input" placeholder="________" maxlength="120">
+                        </div>
+                    </div>
+                    <button id="addPollOptionBtn" class="add-option-btn">+ 增設選項</button>
+                </div>
+                <div class="modal-actions">
+                    <button id="createPollBtn">送出投票</button>
+                    <button id="cancelPollBtn">取消</button>
+                </div>
+            </div>
+        </div>
+        <!-- Song request modal -->
+        <div id="songRequestModal" class="modal hidden" aria-hidden="true">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="songRequestModalTitle">
+                <h3 id="songRequestModalTitle">點歌</h3>
+                <div class="modal-body">
+
+                    <label>歌名<br><input type="text" id="requestSongName" placeholder="歌名"></label>
+                    <label>歌手<br><input type="text" id="requestSongArtist" placeholder="歌手"></label>
+                </div>
+                <div class="modal-actions">
+                    <button id="confirmSongRequestBtn">發起點歌</button>
+                    <button id="cancelSongRequestBtn">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Song request notification modal -->
+        <div id="songRequestNotification" class="modal hidden" aria-hidden="true">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content song-notification" role="dialog" aria-modal="true">
+                <div id="songRequestContent"></div>
+                <div class="modal-actions">
+                    <button id="acceptSongRequestBtn">確認</button>
+                    <button id="rejectSongRequestBtn">拒絕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating poll window (does not affect layout) -->
+        <div id="pollContainer" class="poll-window hidden" aria-live="polite"></div>
+    </div>
+
+    <div id="whiteboardModal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content whiteboard-content" role="dialog" aria-modal="true">
+            <div class="whiteboard-header">
+                <h3>互動白板</h3>
+                <div class="whiteboard-tools">
+                    <button class="color-btn selected" data-color="#000000" style="background:#000;"></button>
+                    <button class="color-btn" data-color="#2563eb" style="background:#2563eb;"></button>
+                    <button class="color-btn" data-color="#ef4444" style="background:#ef4444;"></button>
+                    <button id="clearBoardBtn">清除</button>
+                    <button id="closeWhiteboardBtn">關閉</button>
+                </div>
+            </div>
+            <div class="canvas-container">
+                <canvas id="whiteboardCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
