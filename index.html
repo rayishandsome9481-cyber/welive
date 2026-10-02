@@ -62,8 +62,23 @@
                 <div class="rooms-header">
                     <h2>房間列表</h2>
                     <form id="createRoomForm">
-                        <input type="text" id="newRoomName" placeholder="輸入房間名稱" maxlength="48" required>
-                        <button type="submit">建立房間</button>
+                        <div class="create-row">
+                            <input type="text" id="newRoomName" placeholder="輸入房間名稱" maxlength="48" required>
+                            <button type="submit">建立房間</button>
+                        </div>
+                        <div class="create-row create-options">
+                            <div class="mode-toggle" role="radiogroup" aria-label="房間模式">
+                                <label title="每個人都開鏡頭互相通話（最多 4 人）">
+                                    <input type="radio" name="roomMode" value="call" checked>
+                                    <span>💬 視訊通話</span>
+                                </label>
+                                <label title="只有房主開播，其他人當觀眾（最多 30 人）">
+                                    <input type="radio" name="roomMode" value="live">
+                                    <span>📺 直播</span>
+                                </label>
+                            </div>
+                            <input type="password" id="newRoomPassword" placeholder="🔒 密碼（選填，留空為公開）" maxlength="32" autocomplete="new-password">
+                        </div>
                     </form>
                 </div>
                 <ul id="roomsList"></ul>
@@ -72,7 +87,11 @@
             <section id="conferenceSection" class="hidden">
                 <div id="conferenceLayout">
                     <aside id="sidebar">
-                        <h3>房間：<span id="roomName"></span></h3>
+                        <div class="room-title-row">
+                            <h3>房間：<span id="roomName"></span></h3>
+                            <span id="roomModeBadge" class="mode-badge"></span>
+                        </div>
+                        <div id="viewerCount" class="viewer-count hidden"></div>
                         <div class="participants-header">
                             <h4>在線成員</h4>
                             <!-- requestSongBtn will be dynamically added here -->
@@ -88,22 +107,53 @@
 
                         <!-- pollContainer removed from sidebar; floating poll window is rendered separately -->
 
-                        <div id="chat">
+                        <div class="sidebar-tabs" role="tablist">
+                            <button type="button" class="tab-btn active" data-tab="chat" role="tab">聊天</button>
+                            <button type="button" class="tab-btn" data-tab="queue" role="tab">點歌佇列 <span id="queueCount" class="tab-count hidden">0</span></button>
+                        </div>
+
+                        <div id="chat" class="tab-panel">
                             <div id="messages"></div>
                             <div class="chat-input">
-                                <input type="text" id="messageInput" placeholder="輸入訊息...">
+                                <div id="mentionSuggest" class="mention-suggest hidden" role="listbox"></div>
+                                <input type="text" id="messageInput" placeholder="輸入訊息，打 @ 可以提及成員..." autocomplete="off">
                                 <button id="sendBtn">送出</button>
                             </div>
                             <div class="reactions">
                                 <button class="reactionBtn" data-emoji="👏">👏</button>
                                 <button class="reactionBtn" data-emoji="🚀">🚀</button>
                                 <button id="lyricsBtn" title="搜尋歌詞">🔍</button>
+                                <button id="danmakuToggle" class="toggle-chip active" title="彈幕開關" aria-pressed="true">彈</button>
                             </div>
+                        </div>
 
+                        <div id="queuePanel" class="tab-panel hidden">
+                            <div id="nowPlaying" class="now-playing empty">
+                                <div class="np-label">正在演唱</div>
+                                <div class="np-title">目前沒有歌曲</div>
+                                <div class="np-meta">在下面點一首歌開始吧！</div>
+                            </div>
+                            <div class="np-controls">
+                                <button type="button" id="queueNextBtn" title="切到下一首">⏭ 下一首</button>
+                                <button type="button" id="autoScrollBtn" title="歌詞自動捲動">⏸ 暫停捲動</button>
+                                <select id="scrollSpeed" title="歌詞捲動速度">
+                                    <option value="4500">慢</option>
+                                    <option value="3500" selected>中</option>
+                                    <option value="2500">快</option>
+                                </select>
+                            </div>
+                            <h4>接下來</h4>
+                            <ol id="queueList"></ol>
+                            <form id="queueAddForm">
+                                <input type="text" id="queueSongInput" placeholder="歌名" maxlength="100" required>
+                                <input type="text" id="queueArtistInput" placeholder="歌手（選填）" maxlength="100">
+                                <button type="submit">＋ 加入佇列</button>
+                            </form>
                         </div>
                     </aside>
 
                     <div id="stage">
+                        <div id="danmakuLayer" aria-hidden="true"></div>
                         <div id="localContainer" class="video-card" data-user="self">
                             <video id="localVideo" autoplay playsinline muted></video>
                             <span class="label">我</span>
@@ -173,7 +223,7 @@
             <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="songRequestModalTitle">
                 <h3 id="songRequestModalTitle">點歌</h3>
                 <div class="modal-body">
-
+                    <label>要請誰唱<br><select id="songRequestTarget"></select></label>
                     <label>歌名<br><input type="text" id="requestSongName" placeholder="歌名"></label>
                     <label>歌手<br><input type="text" id="requestSongArtist" placeholder="歌手"></label>
                 </div>
@@ -192,6 +242,23 @@
                 <div class="modal-actions">
                     <button id="acceptSongRequestBtn">確認</button>
                     <button id="rejectSongRequestBtn">拒絕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Password modal (private rooms) -->
+        <div id="passwordModal" class="modal hidden" aria-hidden="true">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle">
+                <h3 id="passwordModalTitle">🔒 私人房間</h3>
+                <div class="modal-body">
+                    <p id="passwordModalRoom" class="hint"></p>
+                    <input type="password" id="joinPasswordInput" placeholder="請輸入房間密碼" maxlength="32" autocomplete="off">
+                    <p id="passwordError" class="form-error hidden"></p>
+                </div>
+                <div class="modal-actions">
+                    <button id="confirmPasswordBtn">加入</button>
+                    <button id="cancelPasswordBtn" class="btn-secondary">取消</button>
                 </div>
             </div>
         </div>
@@ -222,4 +289,4 @@
     <script src="main.js"></script>
 </body>
 
-</html>
+</html>

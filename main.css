@@ -1,18 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-    /* Premium Dark Palette */
-    --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --glass-highlight: rgba(255, 255, 255, 0.15);
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --accent-primary: #38bdf8;
-    /* Sky Blue */
-    --accent-glow: rgba(56, 189, 248, 0.5);
-    --danger: #ef4444;
-    --success: #22c55e;
+    /* 年輕社交／活力暖色風 */
+    --canvas: #1A1625;              /* 深層背景：帶紫調的深藍灰 */
+    --surface: #262035;             /* 表面 */
+    --surface-2: #312A44;           /* 抬升表面（hover、卡片內層） */
+    --surface-3: #3C3453;
+    --border: rgba(176, 168, 192, 0.14);
+    --border-strong: rgba(176, 168, 192, 0.30);
+
+    --accent-primary: #FF3366;      /* 活力桃紅 */
+    --accent-2: #FF9900;            /* 暖橘 */
+    --accent-gradient: linear-gradient(135deg, #FF3366 0%, #FF9900 100%);
+    --accent-hover: #FF5C85;
+    --accent-soft: rgba(255, 51, 102, 0.16);
+    --accent-glow: rgba(255, 51, 102, 0.40);
+    --on-accent: #FFFFFF;
+    --gold: #FFD700;                /* 特權標籤：房主、私人房 */
+    --gold-soft: rgba(255, 215, 0, 0.14);
+
+    --text-primary: #FFFFFF;
+    --text-secondary: #B0A8C0;
+    --text: var(--text-primary);
+    --highlight: var(--accent-primary);
+
+    --danger: #FF4D4F;
+    --success: #2ED573;
+    --warning: #FFB020;
+
+    /* 舊變數改指向新色（保留名稱讓舊規則繼續運作） */
+    --bg-gradient: var(--canvas);
+    --glass-bg: var(--surface);
+    --glass-border: var(--border);
+    --glass-highlight: var(--border-strong);
 
     /* Dimensions */
     --header-height: 70px;
@@ -66,7 +86,7 @@ header {
     align-items: center;
     justify-content: space-between;
     padding: 0 32px;
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(30, 30, 30, 0.92);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--glass-border);
     z-index: 10;
@@ -75,9 +95,7 @@ header {
 header h1 {
     font-size: 24px;
     font-weight: 700;
-    background: linear-gradient(to right, #fff, #94a3b8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-primary);
     letter-spacing: -0.5px;
 }
 
@@ -149,31 +167,31 @@ header h1 {
 
 #changeNameBtn,
 #leaveRoomBtn {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
+    background: rgba(255, 77, 79, 0.1);
+    border-color: rgba(255, 77, 79, 0.2);
+    color: #FF8A8C;
 }
 
 #changeNameBtn:hover,
 #leaveRoomBtn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+    background: rgba(255, 77, 79, 0.2);
+    border-color: rgba(255, 77, 79, 0.4);
+    box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);
 }
 
 /* Camera / Mic buttons: same style as leaveRoom but blue */
 #toggleCamera,
 #toggleMic {
-    background: rgba(69, 131, 193, 0.08);
-    border-color: rgba(77, 166, 255, 0.18);
+    background: rgba(255, 51, 102, 0.08);
+    border-color: rgba(255, 51, 102, 0.18);
     color: var(--highlight);
 }
 
 #toggleCamera:hover,
 #toggleMic:hover {
-    background: rgba(69, 131, 193, 0.08);
-    border-color: rgba(77, 166, 255, 0.32);
-    box-shadow: 0 4px 12px rgba(77, 166, 255, 0.12);
+    background: rgba(255, 51, 102, 0.08);
+    border-color: rgba(255, 51, 102, 0.32);
+    box-shadow: 0 4px 12px rgba(255, 51, 102, 0.12);
 }
 
 /* Main Layout */
@@ -227,7 +245,7 @@ input[type="text"] {
 
 input[type="text"]:focus {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.2);
     background: rgba(0, 0, 0, 0.3);
 }
 
@@ -576,7 +594,7 @@ input[type="text"]:focus {
 
     .message.self {
         align-self: flex-end;
-        background: linear-gradient(135deg, var(--accent-primary), #2563eb);
+        background: var(--accent-soft);
         color: #fff;
         border-bottom-right-radius: 4px;
     }
@@ -651,7 +669,7 @@ input[type="text"]:focus {
 
     .modal-content {
         position: relative;
-        background: rgba(40, 40, 40, 0.95);
+        background: rgba(30, 30, 30, 0.95);
         color: var(--text);
         border-radius: 10px;
         padding: 16px;
@@ -814,7 +832,7 @@ input[type="text"]:focus {
         color: var(--accent-primary);
         font-weight: 800;
         font-size: 24px;
-        text-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        text-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
         transform: scale(1.05);
     }
 
@@ -834,7 +852,7 @@ input[type="text"]:focus {
         bottom: 32px;
         left: 50%;
         transform: translateX(-50%);
-        background: rgba(15, 23, 42, 0.9);
+        background: rgba(30, 30, 30, 0.92);
         backdrop-filter: blur(12px);
         color: #fff;
         padding: 12px 24px;
@@ -911,15 +929,15 @@ input[type="text"]:focus {
         font-size: 16px;
         font-weight: 600;
         white-space: nowrap;
-        background: #38bdf8;
+        background: var(--accent-primary);
         color: #fff;
-        border: 1px solid #38bdf8;
+        border: 1px solid var(--accent-primary);
         transition: 0.25s ease;
     }
 
     button:hover {
-        background: #0ea5e9;
-        border-color: #0ea5e9;
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
     }
 
     /* 歌詞搜尋區塊 */
@@ -953,8 +971,8 @@ input[type="text"]:focus {
     }
 
     #lyricsSearch button:hover {
-        background: #0ea5e9;
-        border-color: #0ea5e9;
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
     }
 
     /* Lyrics result in modal */
@@ -1011,7 +1029,7 @@ input[type="text"]:focus {
         transform: translate(-50%, -50%);
         width: 340px;
         max-width: calc(100% - 48px);
-        background: rgba(20, 24, 32, 0.95);
+        background: rgba(30, 30, 30, 0.95);
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 12px;
         padding: 12px;
@@ -1105,8 +1123,8 @@ input[type="text"]:focus {
 
     #addPollOptionBtn {
         padding: 8px 16px;
-        background: rgba(56, 189, 248, 0.15);
-        border: 1px solid rgba(56, 189, 248, 0.3);
+        background: rgba(255, 51, 102, 0.15);
+        border: 1px solid rgba(255, 51, 102, 0.3);
         color: var(--accent-primary);
         border-radius: 8px;
         cursor: pointer;
@@ -1114,8 +1132,8 @@ input[type="text"]:focus {
     }
 
     #addPollOptionBtn:hover {
-        background: rgba(56, 189, 248, 0.25);
-        border-color: rgba(56, 189, 248, 0.5);
+        background: rgba(255, 51, 102, 0.25);
+        border-color: rgba(255, 51, 102, 0.5);
     }
 
     .poll-option:hover {
@@ -1338,4 +1356,1408 @@ input[type="text"]:focus {
         width: 95%; /* 手機版 Modal 寬一點 */
         max-width: 95%;
     }
+}
+/* =========================================================
+   新功能樣式：直播模式 / 私人房間 / 聊天室強化 / 彈幕 / KTV / 網路品質
+   ========================================================= */
+
+:root {
+    --live-red: #FF3366;
+    --mention: #FF9900;
+}
+
+input[type="password"],
+#sidebar select,
+.np-controls select {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 15px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+input[type="password"]:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.2);
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text-primary) !important;
+}
+
+.form-error {
+    color: #FF8A8C;
+    font-size: 13px;
+}
+
+/* ---------- 建立房間表單 ---------- */
+#createRoomForm {
+    flex-direction: column;
+}
+
+.create-row {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.create-options input[type="password"] {
+    flex: 1;
+    font-size: 14px;
+    padding: 10px 14px;
+}
+
+.mode-toggle {
+    display: flex;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.mode-toggle label {
+    cursor: pointer;
+}
+
+.mode-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mode-toggle span {
+    display: block;
+    padding: 6px 12px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.mode-toggle input:checked + span {
+    background: var(--accent-primary);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(255, 51, 102, 0.35);
+}
+
+.mode-toggle input[value="live"]:checked + span {
+    background: var(--live-red);
+    box-shadow: 0 4px 12px rgba(255, 77, 79, 0.35);
+}
+
+.mode-toggle input:focus-visible + span {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+/* ---------- 房間列表 ---------- */
+#roomsList {
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.rooms-empty {
+    opacity: 0.7;
+    text-align: center;
+    padding: 20px;
+}
+
+.room-item .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.room-item h3 {
+    margin-bottom: 0;
+}
+
+.room-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.room-item .room-badge,
+.mode-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 99px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    color: #fff;
+}
+
+.badge-live {
+    background: var(--live-red);
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+.badge-call {
+    background: rgba(255, 51, 102, 0.25);
+    color: var(--text-secondary) !important;
+}
+
+.badge-lock {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary) !important;
+}
+
+.badge-song {
+    background: rgba(255, 51, 102, 0.25);
+    color: var(--text-secondary) !important;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.room-item .room-sub {
+    font-size: 12px;
+}
+
+.btn-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.6); }
+    50% { box-shadow: 0 0 0 5px rgba(255, 77, 79, 0); }
+}
+
+/* ---------- 側邊欄：標題、觀眾數、分頁 ---------- */
+.room-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.room-title-row h3 {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.viewer-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: -8px;
+}
+
+#controls.viewer-controls {
+    grid-template-columns: 1fr;
+}
+
+.sidebar-tabs {
+    display: flex;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+}
+
+.sidebar-tabs .tab-btn {
+    flex: 1;
+    padding: 8px;
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.sidebar-tabs .tab-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.tab-count {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 5px;
+    margin-left: 4px;
+    border-radius: 99px;
+    background: rgba(255, 51, 102, 0.6);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+}
+
+.tab-count.pulse {
+    animation: tabPulse 1s ease-in-out infinite;
+}
+
+@keyframes tabPulse {
+    50% { transform: scale(1.25); background: var(--accent-primary); }
+}
+
+.tab-panel {
+    min-height: 0;
+}
+
+/* ---------- 成員列表：禁言 / 踢人 ---------- */
+#participantsList {
+    max-height: 150px;
+}
+
+#participantsList li {
+    gap: 6px;
+}
+
+.participant-name {
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.participant-name:hover {
+    color: var(--accent-primary);
+}
+
+.participant-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+#participantsList li .participant-actions button {
+    padding: 3px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+#participantsList li .participant-actions .danger-btn {
+    border-color: rgba(255, 77, 79, 0.4);
+    color: #FF8A8C;
+}
+
+#participantsList li .participant-actions .danger-btn:hover {
+    background: var(--danger);
+    color: #fff;
+}
+
+/* ---------- 聊天：@提及、系統訊息 ---------- */
+.chat-input {
+    position: relative;
+}
+
+.chat-input input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mention-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    background: rgba(30, 30, 30, 0.97);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 20;
+}
+
+.mention-item {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.mention-item.active,
+.mention-item:hover {
+    background: rgba(255, 51, 102, 0.2);
+}
+
+.message-text {
+    word-break: break-word;
+}
+
+.mention {
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.message.self .mention {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+
+.mention.mention-me {
+    background: rgba(255, 51, 102, 0.25);
+    color: var(--mention);
+    border-radius: 4px;
+    padding: 0 3px;
+}
+
+.message.mentioned {
+    box-shadow: inset 3px 0 0 var(--mention);
+    background: rgba(255, 51, 102, 0.12);
+}
+
+.message.system {
+    align-self: center;
+    max-width: 95%;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 2px 8px;
+    text-align: center;
+}
+
+/* ---------- 彈幕 ---------- */
+#stage {
+    position: relative;
+}
+
+#danmakuLayer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 40;
+    border-radius: 24px;
+}
+
+.danmaku-item {
+    position: absolute;
+    left: 0;
+    white-space: nowrap;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 2px #000, 0 0 4px #000, 1px 1px 2px #000;
+    will-change: transform;
+}
+
+.danmaku-item.self {
+    border: 2px solid rgba(255, 51, 102, 0.8);
+    border-radius: 8px;
+    padding: 0 6px;
+}
+
+.danmaku-item.mention {
+    color: var(--mention);
+}
+
+.toggle-chip {
+    flex: 0 0 auto;
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    text-decoration: line-through;
+    cursor: pointer;
+}
+
+.toggle-chip.active {
+    background: rgba(255, 51, 102, 0.2);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+/* ---------- 直播模式畫面 ---------- */
+#stage.live-mode {
+    grid-template-columns: 1fr;
+}
+
+.video-card.broadcasting .label {
+    background: var(--live-red);
+    font-weight: 700;
+}
+
+/* ---------- 網路品質指示 ---------- */
+.net-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.net-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 12px;
+}
+
+.net-bars i {
+    display: block;
+    width: 3px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.net-bars i:nth-child(1) { height: 4px; }
+.net-bars i:nth-child(2) { height: 8px; }
+.net-bars i:nth-child(3) { height: 12px; }
+
+.q-good .net-bars i { background: var(--success); }
+.q-fair .net-bars i:nth-child(-n+2) { background: var(--warning); }
+.q-poor .net-bars i:nth-child(1) { background: var(--danger); }
+.q-unknown .net-bars i { animation: netBlink 1s ease-in-out infinite; }
+
+@keyframes netBlink {
+    50% { background: rgba(255, 255, 255, 0.6); }
+}
+
+/* ---------- KTV 點歌佇列 ---------- */
+#queuePanel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    padding: 12px;
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+}
+
+.now-playing {
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid rgba(255, 51, 102, 0.45);
+}
+
+.now-playing.empty {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--glass-border);
+}
+
+.np-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.now-playing.empty .np-label {
+    color: var(--text-secondary);
+}
+
+.np-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 2px 0;
+    word-break: break-word;
+}
+
+.np-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.np-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 76px;
+    gap: 6px;
+}
+
+.np-controls button {
+    padding: 8px;
+    font-size: 13px;
+}
+
+.np-controls select {
+    padding: 6px;
+    font-size: 13px;
+    border-radius: 12px;
+}
+
+#queuePanel h4 {
+    margin-bottom: 0 !important;
+}
+
+#queueList {
+    list-style: none;
+    flex: 1;
+    min-height: 40px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.queue-empty {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 8px;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.queue-item.up-next {
+    border: 1px solid rgba(255, 51, 102, 0.4);
+}
+
+.queue-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-title {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.queue-remove {
+    padding: 2px 8px;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+}
+
+.queue-remove:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
+#queueAddForm {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+#queueAddForm input {
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+#queueAddForm button {
+    grid-column: span 2;
+    padding: 8px;
+    font-size: 14px;
+}
+
+/* 提詞機：KTV 標題、找不到歌詞訊息 */
+.prompter-now {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: rgba(255, 51, 102, 0.3);
+    padding: 2px 10px;
+    border-radius: 99px;
+    pointer-events: none;
+}
+
+.prompter-message {
+    margin: auto;
+    text-align: center;
+    font-style: normal;
+}
+
+.prompter-message-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+    .create-row {
+        flex-wrap: wrap;
+    }
+
+    .mode-toggle {
+        width: 100%;
+    }
+
+    .mode-toggle label {
+        flex: 1;
+        text-align: center;
+    }
+
+    .danmaku-item {
+        font-size: 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .badge-live,
+    .tab-count.pulse,
+    .q-unknown .net-bars i {
+        animation: none;
+    }
+}
+
+/* 點歌對象下拉選單（深色背景下的選項文字） */
+#songRequestTarget {
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+#songRequestTarget option {
+    background: var(--surface);
+    color: var(--text-primary);
+}
+
+/* 點歌佇列：整個面板一起捲動（小螢幕時清單不會被擠成一行），新增表單固定在底部 */
+#queuePanel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#queuePanel > * {
+    flex-shrink: 0;
+}
+
+#queueList {
+    flex: none;
+    overflow: visible;
+    min-height: 0;
+}
+
+#queueAddForm {
+    position: sticky;
+    bottom: -12px;
+    margin: 0 -12px -12px;
+    padding: 10px 12px 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--glass-border);
+    z-index: 2;
+}
+
+/* 矮螢幕（筆電）：縮小側邊欄按鈕，多留空間給聊天與佇列 */
+@media (max-height: 820px) {
+    #sidebar {
+        gap: 10px;
+        padding: 16px;
+    }
+
+    #controls button {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+
+    #participantsList {
+        max-height: 110px;
+    }
+}
+
+/* =========================================================
+   主題基礎層：扁平表面、細邊框。實際配色由 :root 變數決定，
+   檔案最後的「活力暖色風」區塊再加上漸層與金色特權標籤。
+   ========================================================= */
+
+body {
+    background: var(--canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+}
+
+header {
+    background: var(--canvas);
+    backdrop-filter: none;
+    border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+    font-weight: 600;
+    letter-spacing: -0.3px;
+}
+
+section,
+#sidebar {
+    background: var(--surface);
+    backdrop-filter: none;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: none;
+}
+
+#conferenceSection {
+    background: transparent;
+    border: none;
+}
+
+/* 內嵌區域（舞台、聊天框、佇列、提詞機）用比表面更深的底，讓內容浮出來 */
+#stage,
+#chat,
+#queuePanel,
+#prompter {
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+#danmakuLayer {
+    border-radius: 12px;
+}
+
+#queueAddForm {
+    background: var(--canvas);
+    border-top: 1px solid var(--border);
+}
+
+/* ---------- 按鈕 ---------- */
+button {
+    background: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    color: var(--on-accent);
+    font-weight: 600;
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+button:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+/* 次要按鈕：無色系，退到背景 */
+#startPollBtn,
+#shareScreenBtn,
+#recordScreenBtn,
+#changeNameBtn,
+#toggleCamera,
+#toggleMic,
+#clearPrompterBtn,
+#whiteboardBtn,
+#requestSongBtn,
+#lyricsBtn,
+.reactionBtn,
+.toggle-chip,
+.queue-remove,
+.expand-btn,
+#participantsList li button,
+.np-controls #autoScrollBtn,
+.modal-actions #cancelLyricsBtn,
+.modal-actions #cancelSongRequestBtn,
+.modal-actions #rejectSongRequestBtn,
+.whiteboard-tools button:not(.color-btn),
+.btn-secondary {
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+
+#startPollBtn:hover,
+#shareScreenBtn:hover,
+#recordScreenBtn:hover,
+#changeNameBtn:hover,
+#toggleCamera:hover,
+#toggleMic:hover,
+#clearPrompterBtn:hover,
+#whiteboardBtn:hover,
+#requestSongBtn:hover,
+#lyricsBtn:hover,
+.reactionBtn:hover,
+.toggle-chip:hover,
+#participantsList li button:hover,
+.np-controls #autoScrollBtn:hover,
+.modal-actions #cancelLyricsBtn:hover,
+.modal-actions #cancelSongRequestBtn:hover,
+.modal-actions #rejectSongRequestBtn:hover,
+.whiteboard-tools button:not(.color-btn):hover,
+.btn-secondary:hover {
+    background: var(--surface-3) !important;
+    border-color: var(--border-strong) !important;
+    transform: none;
+}
+
+/* 錄影鈕原本是預設大藍鈕，改成和其他工具列圖示一致 */
+#recordScreenBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    margin-right: 8px;
+    border-radius: 8px;
+}
+
+/* 危險操作：只用紅字提示，不用大面積紅色 */
+#leaveRoomBtn,
+#participantsList li .participant-actions .danger-btn,
+.queue-remove:hover {
+    background: var(--surface-2) !important;
+    border: 1px solid rgba(255, 77, 79, 0.35) !important;
+    color: var(--danger) !important;
+}
+
+#leaveRoomBtn:hover,
+#participantsList li .participant-actions .danger-btn:hover {
+    background: rgba(255, 77, 79, 0.12) !important;
+    border-color: var(--danger) !important;
+    box-shadow: none;
+}
+
+.modal-actions #acceptSongRequestBtn,
+.modal-actions #searchLyricsBtn,
+.modal-actions #confirmSongRequestBtn,
+#confirmPasswordBtn {
+    background: var(--accent-primary);
+    color: var(--on-accent);
+}
+
+/* 開啟狀態的切換鈕（彈幕） */
+.toggle-chip.active {
+    background: var(--accent-soft) !important;
+    border-color: var(--accent-primary) !important;
+    color: var(--accent-primary) !important;
+}
+
+/* ---------- 輸入框 ---------- */
+input[type="text"],
+input[type="password"],
+select,
+.modal-body input,
+.modal-body select {
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+#sidebar input[type="text"],
+#sidebar select {
+    background: var(--surface);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    background: var(--canvas);
+}
+
+input::placeholder {
+    color: #7A7290;
+}
+
+/* ---------- 房間列表 ---------- */
+.room-item {
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.room-item:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+}
+
+.badge-live {
+    background: var(--live-red);
+    color: #fff !important;
+}
+
+.badge-call {
+    background: var(--accent-soft);
+    color: var(--accent-primary) !important;
+}
+
+.badge-lock,
+.badge-song {
+    background: var(--surface-3);
+    color: var(--text-secondary) !important;
+}
+
+.mode-toggle {
+    background: var(--canvas);
+    border-color: var(--border);
+}
+
+.mode-toggle input:checked + span {
+    background: var(--accent-primary);
+    color: var(--on-accent);
+    box-shadow: none;
+}
+
+.mode-toggle input[value="live"]:checked + span {
+    background: var(--live-red);
+    color: #fff;
+    box-shadow: none;
+}
+
+/* ---------- 影像卡片 ---------- */
+.video-card {
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+.video-card:hover {
+    border-color: var(--border-strong);
+}
+
+.video-card .label,
+.net-badge {
+    background: rgba(26, 22, 37, 0.78);
+    backdrop-filter: none;
+    color: var(--text-primary);
+}
+
+/* ---------- 側邊欄 ---------- */
+#participantsList li {
+    background: var(--surface-2);
+    border-radius: 8px;
+}
+
+.participant-name:hover {
+    color: var(--accent-primary);
+}
+
+.sidebar-tabs {
+    background: var(--canvas);
+    border-color: var(--border);
+}
+
+.sidebar-tabs .tab-btn {
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-secondary) !important;
+}
+
+.sidebar-tabs .tab-btn.active {
+    background: var(--surface-2) !important;
+    color: var(--text-primary) !important;
+}
+
+.tab-count {
+    background: var(--accent-primary);
+    color: var(--on-accent);
+    font-weight: 700;
+}
+
+@keyframes tabPulse {
+    50% { transform: scale(1.2); background: var(--accent-hover); }
+}
+
+.viewer-count,
+#sidebar h4,
+.hint {
+    color: var(--text-secondary);
+}
+
+/* ---------- 聊天 ---------- */
+.message.other {
+    background: var(--surface-2);
+    color: var(--text-primary);
+}
+
+.message.self {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 51, 102, 0.25);
+}
+
+.message .meta {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+.message.self .mention {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.mention.mention-me {
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+}
+
+.message.mentioned {
+    background: var(--surface-2);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.mention-suggest {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+}
+
+.mention-item.active,
+.mention-item:hover {
+    background: var(--accent-soft);
+}
+
+.danmaku-item.self {
+    border-color: var(--accent-primary);
+}
+
+/* ---------- KTV ---------- */
+.now-playing {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.now-playing.empty {
+    background: var(--surface);
+    box-shadow: none;
+}
+
+.np-label {
+    color: var(--accent-primary);
+}
+
+.queue-item {
+    background: var(--surface);
+    border: 1px solid transparent;
+}
+
+.queue-item.up-next {
+    border-color: var(--border-strong);
+}
+
+.prompter-line {
+    color: #6E6585;
+}
+
+.prompter-current {
+    color: var(--text-primary);
+    text-shadow: none;
+    transform: none;
+}
+
+.prompter-now {
+    background: var(--surface-2);
+    color: var(--text-secondary);
+}
+
+/* ---------- 彈出視窗 / 通知 / 投票 ---------- */
+.modal-backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-primary);
+}
+
+#notification {
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+}
+
+.poll-window {
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+#prompter {
+    font-style: normal;
+}
+
+/* =========================================================
+   活力暖色風：桃紅 → 暖橘 局部漸層、香檳金特權標籤
+   漸層只用在「最想讓人按」的地方，其他維持紫調深色表面。
+   ========================================================= */
+
+/* 標題：品牌漸層字 */
+header h1 {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+}
+
+/* 主要按鈕（建立房間、送出、加入、點歌、下一首…）：漸層 */
+button {
+    background: var(--accent-gradient);
+    border: none;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+    transition: filter 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+button:hover {
+    background: var(--accent-gradient);
+    filter: brightness(1.08);
+    box-shadow: 0 6px 18px rgba(255, 51, 102, 0.35);
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+button:disabled,
+button:disabled:hover {
+    filter: grayscale(0.6);
+    box-shadow: none;
+    transform: none;
+}
+
+.modal-actions #acceptSongRequestBtn,
+.modal-actions #searchLyricsBtn,
+.modal-actions #confirmSongRequestBtn,
+#confirmPasswordBtn {
+    background: var(--accent-gradient);
+    color: #fff;
+}
+
+/* 次要按鈕不要漸層、不要陰影 */
+#startPollBtn,
+#shareScreenBtn,
+#recordScreenBtn,
+#changeNameBtn,
+#toggleCamera,
+#toggleMic,
+#clearPrompterBtn,
+#whiteboardBtn,
+#requestSongBtn,
+#lyricsBtn,
+.reactionBtn,
+.toggle-chip,
+.queue-remove,
+.expand-btn,
+#participantsList li button,
+.np-controls #autoScrollBtn,
+.modal-actions #cancelLyricsBtn,
+.modal-actions #cancelSongRequestBtn,
+.modal-actions #rejectSongRequestBtn,
+.whiteboard-tools button:not(.color-btn),
+.btn-secondary,
+#leaveRoomBtn,
+.sidebar-tabs .tab-btn {
+    text-shadow: none;
+    filter: none !important;
+}
+
+.reactionBtn:hover {
+    transform: scale(1.06);
+}
+
+/* 輸入框聚焦：桃紅光圈 */
+input[type="text"]:focus,
+input[type="password"]:focus,
+select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.22);
+}
+
+/* 房間列表 */
+.badge-live {
+    background: var(--accent-gradient);
+}
+
+.badge-call {
+    background: rgba(255, 153, 0, 0.14);
+    color: var(--accent-2) !important;
+}
+
+.badge-lock {
+    background: var(--gold-soft);
+    color: var(--gold) !important;
+}
+
+.room-item:hover {
+    border-color: rgba(255, 51, 102, 0.45);
+}
+
+.mode-toggle input:checked + span,
+.mode-toggle input[value="live"]:checked + span {
+    background: var(--accent-gradient);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(255, 51, 102, 0.3);
+}
+
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.55); }
+    50% { box-shadow: 0 0 0 5px rgba(255, 51, 102, 0); }
+}
+
+/* 影像卡片 */
+.video-card {
+    background: #120F1A;
+}
+
+.video-card.host-video,
+.video-card.broadcasting {
+    border-color: rgba(255, 215, 0, 0.45);
+}
+
+.video-card.broadcasting .label {
+    background: var(--accent-gradient);
+}
+
+/* 分頁、計數 */
+.tab-count {
+    background: var(--accent-gradient);
+    color: #fff;
+}
+
+.sidebar-tabs .tab-btn.active {
+    color: #fff !important;
+    box-shadow: inset 0 -2px 0 var(--accent-primary);
+}
+
+/* 房主（特權）：香檳金 */
+.mode-badge.badge-live {
+    background: var(--accent-gradient);
+}
+
+#participantsList li.is-host {
+    background: var(--gold-soft);
+    box-shadow: inset 3px 0 0 var(--gold);
+}
+
+#participantsList li.is-host .participant-name {
+    color: var(--gold);
+    font-weight: 600;
+}
+
+.message.from-host .meta {
+    color: var(--gold);
+}
+
+/* 聊天氣泡：自己的訊息用品牌漸層，最有存在感 */
+.message.self {
+    background: var(--accent-gradient);
+    color: #fff;
+    border: none;
+}
+
+.message.self .meta {
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.message.self.from-host .meta {
+    color: #FFF3B0;
+}
+
+.message.self .mention {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.mention {
+    color: var(--accent-2);
+}
+
+.mention.mention-me {
+    background: rgba(255, 153, 0, 0.18);
+    color: var(--accent-2);
+}
+
+.message.mentioned {
+    background: var(--surface-2);
+    box-shadow: inset 3px 0 0 var(--accent-2);
+}
+
+.mention-item.active,
+.mention-item:hover {
+    background: var(--accent-soft);
+}
+
+.danmaku-item.self {
+    border-color: var(--accent-primary);
+}
+
+.danmaku-item.mention {
+    color: var(--accent-2);
+}
+
+/* 彈幕開關 */
+.toggle-chip.active {
+    background: var(--accent-soft) !important;
+    border-color: var(--accent-primary) !important;
+    color: var(--accent-primary) !important;
+}
+
+/* KTV */
+.now-playing {
+    background:
+        linear-gradient(135deg, rgba(255, 51, 102, 0.20), rgba(255, 153, 0, 0.12)),
+        var(--surface-2);
+    border-color: rgba(255, 51, 102, 0.35);
+    box-shadow: none;
+}
+
+.np-label {
+    color: var(--accent-2);
+}
+
+.queue-item.up-next {
+    border-color: rgba(255, 153, 0, 0.45);
+}
+
+.prompter-current {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.prompter-now {
+    background: var(--accent-soft);
+    color: #FFB3C6;
+}
+
+/* 通知 */
+#notification {
+    background: var(--surface-3);
+    border-color: rgba(255, 51, 102, 0.35);
 }

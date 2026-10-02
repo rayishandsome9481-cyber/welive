@@ -29,8 +29,25 @@ const CONFIG = {
         ]
     },
     API_BASE: '',
-    MAX_PARTICIPANTS: 2
+    MAX_PARTICIPANTS: 4,          // 視訊通話上限（伺服器也會檢查）
+    STATS_INTERVAL_MS: 2000,      // 網路品質偵測頻率
+    DANMAKU_DURATION_MS: 8000     // 彈幕飛過畫面的時間
 };
+
+function escapeHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function escapeRegExp(str) {
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function formatTime(ts) {
+    const t = ts ? new Date(ts) : new Date();
+    return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+}
 
 /**
  * Manages all UI interactions and DOM updates.
@@ -109,7 +126,33 @@ class UIManager {
             whiteboardCanvas: document.getElementById('whiteboardCanvas'),
             colorBtns: document.querySelectorAll('.color-btn'),
             clearBoardBtn: document.getElementById('clearBoardBtn'),
-            closeWhiteboardBtn: document.getElementById('closeWhiteboardBtn')
+            closeWhiteboardBtn: document.getElementById('closeWhiteboardBtn'),
+            // 新功能
+            newRoomPassword: document.getElementById('newRoomPassword'),
+            roomModeBadge: document.getElementById('roomModeBadge'),
+            viewerCount: document.getElementById('viewerCount'),
+            controls: document.getElementById('controls'),
+            mentionSuggest: document.getElementById('mentionSuggest'),
+            danmakuLayer: document.getElementById('danmakuLayer'),
+            danmakuToggle: document.getElementById('danmakuToggle'),
+            tabButtons: document.querySelectorAll('.sidebar-tabs .tab-btn'),
+            chatPanel: document.getElementById('chat'),
+            queuePanel: document.getElementById('queuePanel'),
+            queueCount: document.getElementById('queueCount'),
+            nowPlaying: document.getElementById('nowPlaying'),
+            queueList: document.getElementById('queueList'),
+            queueAddForm: document.getElementById('queueAddForm'),
+            queueSongInput: document.getElementById('queueSongInput'),
+            queueArtistInput: document.getElementById('queueArtistInput'),
+            queueNextBtn: document.getElementById('queueNextBtn'),
+            autoScrollBtn: document.getElementById('autoScrollBtn'),
+            scrollSpeed: document.getElementById('scrollSpeed'),
+            passwordModal: document.getElementById('passwordModal'),
+            passwordModalRoom: document.getElementById('passwordModalRoom'),
+            joinPasswordInput: document.getElementById('joinPasswordInput'),
+            passwordError: document.getElementById('passwordError'),
+            confirmPasswordBtn: document.getElementById('confirmPasswordBtn'),
+            cancelPasswordBtn: document.getElementById('cancelPasswordBtn')
         };
     }
 
@@ -152,7 +195,8 @@ class UIManager {
         }
     }
 
-    fetchAndDisplayLyrics(song, artist) {
+    fetchAndDisplayLyrics(song, artist, options = {}) {
+        const silent = !!options.silent; // KTV 佇列自動載入：不要彈出歌詞視窗
         const elems = this.elements;
         // Call server-side lyrics endpoint (uses Genius API)
         const resultEl = document.getElementById('lyricsResult');
@@ -162,14 +206,15 @@ class UIManager {
         }
 
         // If triggered from song request, we might want to show the modal if it's hidden
-        if (elems.lyricsModal && elems.lyricsModal.classList.contains('hidden')) {
+        if (!silent && elems.lyricsModal && elems.lyricsModal.classList.contains('hidden')) {
             elems.lyricsModal.classList.remove('hidden');
         }
         // Fill inputs if empty (or overwrite if we want to show what's playing)
         if (elems.songInput) elems.songInput.value = song;
         if (elems.artistInput) elems.artistInput.value = artist || '';
 
-        fetch(`${CONFIG.API_BASE}/api/lyrics`, {
+        if (!silent) this.stopAutoScroll();
+        return fetch(`${CONFIG.API_BASE}/api/lyrics`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ song, artist })
@@ -272,20 +317,95 @@ class UIManager {
 
             // Show controls
             const clearBtn = document.getElementById('clearPrompterBtn');
-            if (clearBtn) clearBtn.classList.remove('hidden');
+            if (clearBtn && !silent) clearBtn.classList.remove('hidden'); // KTV 歌詞由佇列控制，不顯示清除鈕
 
             // Reset state
             this.prompterIndex = -1;
             this.jumpToIndex(0);
 
+            // KTV：在提詞機左上角標示正在唱的歌
+            if (silent && prompter) {
+                const tag = document.createElement('div');
+                tag.className = 'prompter-now';
+                tag.textContent = `🎤 ${headerText}`;
+                prompter.appendChild(tag);
+            }
+
             // Close the lyrics modal on success
-            if (elems.lyricsModal) elems.lyricsModal.classList.add('hidden');
+            if (!silent && elems.lyricsModal) elems.lyricsModal.classList.add('hidden');
+            return true;
 
         }).catch(err => {
             console.error(err);
             if (resultEl) resultEl.textContent = '找不到歌詞 (' + err.message + ')';
-            this.showNotification('找不到歌詞', true);
+            if (silent) {
+                this.showPrompterMessage(`🎤 ${song}${artist ? ' — ' + artist : ''}`, '找不到這首歌的歌詞，直接開唱吧！');
+            } else {
+                this.showNotification('找不到歌詞', true);
+            }
+            return false;
         });
+    }
+
+    showPrompterMessage(title, sub) {
+        this.resetPrompter();
+        const prompter = document.getElementById('prompter');
+        if (!prompter) return;
+        prompter.removeAttribute('aria-hidden');
+        const box = document.createElement('div');
+        box.className = 'prompter-message';
+        const t = document.createElement('div');
+        t.className = 'prompter-message-title';
+        t.textContent = title;
+        const d = document.createElement('div');
+        d.textContent = sub;
+        box.appendChild(t);
+        box.appendChild(d);
+        prompter.appendChild(box);
+    }
+
+    /* ---------- KTV 歌詞自動捲動 ---------- */
+    // anchorTime 時顯示第 anchorIndex 行，之後每 lineMs 前進一行。
+    // 用伺服器的開始時間當錨點，所以每個人看到的歌詞位置會同步。
+    // synced = true：錨點是「歌曲開始時間」，同速度的人永遠在同一行；手動暫停後再繼續就變成各自的進度
+    startAutoScroll(anchorTime, anchorIndex = 0, synced = false) {
+        this.stopAutoScroll();
+        if (!this.prompterLines || !this.prompterLines.length) return;
+        const lineMs = Number(this.elements.scrollSpeed && this.elements.scrollSpeed.value) || 3500;
+        this.autoScroll = { running: true, lineMs, anchorTime, anchorIndex, synced };
+        const tick = () => {
+            if (!this.autoScroll || !this.autoScroll.running) return;
+            const a = this.autoScroll;
+            const idx = a.anchorIndex + Math.floor(Math.max(0, Date.now() - a.anchorTime) / a.lineMs);
+            if (idx !== this.prompterIndex) this.jumpToIndex(idx, true);
+        };
+        tick();
+        this.autoScrollTimer = setInterval(tick, 250);
+        this.updateAutoScrollButton();
+    }
+
+    stopAutoScroll() {
+        if (this.autoScrollTimer) clearInterval(this.autoScrollTimer);
+        this.autoScrollTimer = null;
+        if (this.autoScroll) this.autoScroll.running = false;
+        this.updateAutoScrollButton();
+    }
+
+    toggleAutoScroll() {
+        if (this.autoScroll && this.autoScroll.running) {
+            this.stopAutoScroll();
+        } else if (this.prompterLines && this.prompterLines.length) {
+            // 從目前這行繼續
+            this.startAutoScroll(Date.now(), Math.max(0, this.prompterIndex));
+        }
+    }
+
+    updateAutoScrollButton() {
+        const btn = this.elements.autoScrollBtn;
+        if (!btn) return;
+        const hasLyrics = !!(this.prompterLines && this.prompterLines.length);
+        btn.disabled = !hasLyrics;
+        btn.textContent = (this.autoScroll && this.autoScroll.running) ? '⏸ 暫停捲動' : '▶ 自動捲動';
     }
 
     /* Poll UI handling */
@@ -362,21 +482,34 @@ class UIManager {
             elems.confirmSongRequestBtn = newBtn;
 
             elems.confirmSongRequestBtn.addEventListener('click', () => {
-                // Auto-target the first other participant
-                let targetUserId = null;
-                if (this.currentParticipants && this.currentParticipants.length > 0) {
-                    targetUserId = this.currentParticipants[0].userId;
-                }
+                // 從下拉選單取得點歌對象
+                const targetUserId = elems.songRequestTarget ? elems.songRequestTarget.value : '';
 
                 const songName = elems.requestSongName.value.trim(); // 取得歌名
                 const artist = elems.requestSongArtist.value.trim(); // 取得歌手
 
-                if (!targetUserId) {
-                    this.showNotification('沒有其他成員在線', true);
-                    return;
-                }
                 if (!songName) {
                     this.showNotification('請輸入歌名', true);
+                    return;
+                }
+                if (!targetUserId) {
+                    this.showNotification('請選擇要請誰唱', true);
+                    return;
+                }
+
+                // 選「我自己唱」→ 直接排進 KTV 佇列，不用等對方確認
+                if (targetUserId === '__self__') {
+                    window.app.room.sendSignal('queue-add', { song: songName, artist });
+                    this.showNotification(`已點歌：${songName}`);
+                    elems.songRequestModal.classList.add('hidden');
+                    elems.requestSongName.value = '';
+                    elems.requestSongArtist.value = '';
+                    return;
+                }
+                const target = (this.currentParticipants || []).find(p => p.userId === targetUserId);
+                if (!target) {
+                    this.showNotification('對方已經不在房間了', true);
+                    this.showSongRequestModal(this.currentParticipants);
                     return;
                 }
 
@@ -389,7 +522,7 @@ class UIManager {
                         artistName: artist
                     });
 
-                    this.showNotification(`點歌請求已送出: ${songName}`);
+                    this.showNotification(`已請 ${target.displayName} 唱：${songName}，等待對方確認`);
 
                     // 關閉視窗並清空
                     elems.songRequestModal.classList.add('hidden');
@@ -416,9 +549,8 @@ class UIManager {
         if (elems.acceptSongRequestBtn) {
             elems.acceptSongRequestBtn.addEventListener('click', () => {
                 if (this.pendingSongRequest) {
-                    const { songName, artistName } = this.pendingSongRequest;
-                    this.fetchAndDisplayLyrics(songName, artistName);
-                    this.showNotification(`已接受點歌：${songName}`);
+                    // 接受後伺服器會把歌排進 KTV 佇列，輪到時自動顯示歌詞
+                    this.showNotification(`已接受點歌：${this.pendingSongRequest.songName}，已加入點歌佇列`);
                 }
                 if (elems.songRequestNotification) elems.songRequestNotification.classList.add('hidden');
             });
@@ -432,18 +564,37 @@ class UIManager {
         if (elems.requestSongName) elems.requestSongName.value = '';
         if (elems.requestSongArtist) elems.requestSongArtist.value = '';
 
+        // 建立點歌對象下拉選單：房間內其他成員 + 我自己唱
+        const select = elems.songRequestTarget;
+        if (select) {
+            const prev = select.value;
+            select.innerHTML = '';
+            (participants || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.userId;
+                opt.textContent = `🎤 ${p.displayName}`;
+                select.appendChild(opt);
+            });
+            const self = document.createElement('option');
+            self.value = '__self__';
+            self.textContent = '🙋 我自己唱（直接加入佇列）';
+            select.appendChild(self);
+            if (prev && [...select.options].some(o => o.value === prev)) select.value = prev;
+        }
+
         elems.songRequestModal.classList.remove('hidden');
+        setTimeout(() => elems.requestSongName && elems.requestSongName.focus(), 50);
     }
 
-    showSongRequestNotification(requesterName, songName, artistName) {
+    showSongRequestNotification(requesterName, songName, artistName, requesterId) {
         const elems = this.elements;
         if (!elems || !elems.songRequestNotification) return;
 
         // Store pending request details
-        this.pendingSongRequest = { requesterName, songName, artistName };
+        this.pendingSongRequest = { requesterName, songName, artistName, requesterId };
 
         if (elems.songRequestContent) {
-            elems.songRequestContent.innerHTML = `<h4>${requesterName} 希望你唱 <strong>${songName}</strong>${artistName ? ' (' + artistName + ')' : ''}</h4>`;
+            elems.songRequestContent.innerHTML = `<h4>${escapeHtml(requesterName)} 希望你唱 <strong>${escapeHtml(songName)}</strong>${artistName ? ' (' + escapeHtml(artistName) + ')' : ''}</h4>`;
         }
         elems.songRequestNotification.classList.remove('hidden');
     }
@@ -628,7 +779,7 @@ class UIManager {
         const notif = this.elements.notification;
 
         notif.textContent = message;
-        notif.style.backgroundColor = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(15, 23, 42, 0.9)';
+        notif.style.backgroundColor = isError ? 'rgba(255, 77, 79, 0.95)' : '#3C3453';
         notif.classList.remove('hidden');
 
         if (this.notificationTimeout) clearTimeout(this.notificationTimeout);
@@ -641,6 +792,7 @@ class UIManager {
     advancePrompter() {
         // advance one line (used by container click)
         if (!this.prompterLines || !this.prompterLines.length) return;
+        if (this.autoScroll && this.autoScroll.running) this.stopAutoScroll(); // 手動換行時暫停自動捲動
         // remove previous highlight
         if (this.prompterLines[this.prompterIndex]) this.prompterLines[this.prompterIndex].classList.remove('prompter-current');
         this.prompterIndex++;
@@ -705,10 +857,12 @@ class UIManager {
         }
     }
 
-    jumpToIndex(index) {
+    jumpToIndex(index, fromAuto = false) {
         // Jump prompter and result to a specific line index
         if (!Number.isFinite(index)) return;
         if (!this.prompterLines || !this.prompterLines.length) return;
+        if (!fromAuto && this.autoScroll && this.autoScroll.running) this.stopAutoScroll();
+        if (fromAuto && index >= this.prompterLines.length) { this.stopAutoScroll(); return; } // 唱完了
         const i = Math.max(0, Math.min(index, this.prompterLines.length - 1));
         // remove previous
         this.prompterLines.forEach(n => n.classList && n.classList.remove('prompter-current'));
@@ -780,6 +934,7 @@ class UIManager {
 
         this.prompterLines = [];
         this.resultLines = [];
+        this.stopAutoScroll();
     }
 
     updateIdentity(user) {
@@ -813,10 +968,8 @@ class UIManager {
         this.elements.roomsList.innerHTML = '';
         if (!rooms.length) {
             const empty = document.createElement('li');
+            empty.className = 'rooms-empty';
             empty.textContent = '尚無房間，成為第一個建立者吧！';
-            empty.style.opacity = '0.7';
-            empty.style.textAlign = 'center';
-            empty.style.padding = '20px';
             this.elements.roomsList.appendChild(empty);
             return;
         }
@@ -831,23 +984,38 @@ class UIManager {
             const title = document.createElement('h3');
             title.textContent = room.name;
 
+            const badges = document.createElement('div');
+            badges.className = 'room-badges';
+            const addBadge = (text, cls) => {
+                const b = document.createElement('span');
+                b.className = `room-badge ${cls}`;
+                b.textContent = text;
+                badges.appendChild(b);
+            };
+            if (room.mode === 'live') addBadge('● LIVE 直播', 'badge-live');
+            else addBadge('💬 視訊通話', 'badge-call');
+            if (room.hasPassword) addBadge('🔒 私人', 'badge-lock');
+            if (room.nowPlaying) addBadge(`🎤 ${room.nowPlaying}`, 'badge-song');
+
+            const max = room.maxMembers || CONFIG.MAX_PARTICIPANTS;
             const sub = document.createElement('span');
-            sub.textContent = `在線人數：${room.memberCount}`;
+            sub.className = 'room-sub';
+            sub.textContent = `${room.hostName ? '房主：' + room.hostName + ' · ' : ''}在線 ${room.memberCount}/${max}`;
 
             meta.appendChild(title);
+            meta.appendChild(badges);
             meta.appendChild(sub);
 
             const joinBtn = document.createElement('button');
             joinBtn.type = 'button';
 
-            if ((room.memberCount || 0) >= CONFIG.MAX_PARTICIPANTS) {
+            if ((room.memberCount || 0) >= max) {
                 joinBtn.textContent = '房間已滿';
                 joinBtn.disabled = true;
-                joinBtn.style.opacity = '0.5';
-                joinBtn.style.cursor = 'not-allowed';
+                joinBtn.classList.add('btn-disabled');
             } else {
-                joinBtn.textContent = '加入';
-                joinBtn.addEventListener('click', () => onJoin(room.id));
+                joinBtn.textContent = room.mode === 'live' ? '進入觀看' : '加入';
+                joinBtn.addEventListener('click', () => onJoin(room));
             }
 
             li.appendChild(meta);
@@ -856,7 +1024,93 @@ class UIManager {
         });
     }
 
-    updateParticipants(participants, hostId, currentUserId, onTransferHost) {
+    /* ---------- 私人房間密碼視窗 ---------- */
+    askPassword(roomName, errorText) {
+        const e = this.elements;
+        return new Promise((resolve) => {
+            e.passwordModalRoom.textContent = `「${roomName}」是私人房間，請輸入密碼才能加入。`;
+            e.joinPasswordInput.value = '';
+            e.passwordError.textContent = errorText || '';
+            e.passwordError.classList.toggle('hidden', !errorText);
+            e.passwordModal.classList.remove('hidden');
+            setTimeout(() => e.joinPasswordInput.focus(), 50);
+
+            const finish = (value) => {
+                e.passwordModal.classList.add('hidden');
+                e.confirmPasswordBtn.removeEventListener('click', onOk);
+                e.cancelPasswordBtn.removeEventListener('click', onCancel);
+                e.joinPasswordInput.removeEventListener('keydown', onKey);
+                resolve(value);
+            };
+            const onOk = () => {
+                const v = e.joinPasswordInput.value.trim();
+                if (!v) {
+                    e.passwordError.textContent = '請輸入密碼';
+                    e.passwordError.classList.remove('hidden');
+                    return;
+                }
+                finish(v);
+            };
+            const onCancel = () => finish(null);
+            const onKey = (ev) => {
+                if (ev.key === 'Enter') onOk();
+                if (ev.key === 'Escape') onCancel();
+            };
+            e.confirmPasswordBtn.addEventListener('click', onOk);
+            e.cancelPasswordBtn.addEventListener('click', onCancel);
+            e.joinPasswordInput.addEventListener('keydown', onKey);
+        });
+    }
+
+    /* ---------- 房間模式（直播 / 視訊通話）---------- */
+    applyRoomMode(mode, isHost, hasPassword) {
+        const e = this.elements;
+        const isLive = mode === 'live';
+        const isViewer = isLive && !isHost;
+        e.stage.classList.toggle('live-mode', isLive);
+        e.stage.classList.toggle('viewer-mode', isViewer);
+        e.localContainer.classList.toggle('hidden', isViewer);
+        e.localContainer.classList.toggle('broadcasting', isLive && isHost);
+        const label = e.localContainer.querySelector('.label');
+        if (label) label.textContent = isLive && isHost ? '● LIVE 我正在直播' : '我';
+        [e.toggleCamera, e.toggleMic, e.shareScreenBtn, e.recordScreenBtn].forEach(btn => {
+            if (btn) btn.classList.toggle('hidden', isViewer);
+        });
+        if (e.controls) e.controls.classList.toggle('viewer-controls', isViewer);
+        if (e.roomModeBadge) {
+            e.roomModeBadge.textContent = `${isLive ? '● LIVE' : '💬 通話'}${hasPassword ? ' 🔒' : ''}`;
+            e.roomModeBadge.className = `mode-badge ${isLive ? 'badge-live' : 'badge-call'}`;
+        }
+        if (e.viewerCount) e.viewerCount.classList.toggle('hidden', !isLive);
+    }
+
+    updateViewerCount(count) {
+        if (this.elements.viewerCount) this.elements.viewerCount.textContent = `👀 ${count} 位觀眾正在觀看`;
+    }
+
+    /* ---------- 網路品質指示 ---------- */
+    updateNetBadge(userId, info) {
+        const card = userId === 'self'
+            ? this.elements.localContainer
+            : document.querySelector(`.video-card[data-user="${userId}"]`);
+        if (!card) return;
+        let badge = card.querySelector('.net-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'net-badge';
+            badge.innerHTML = '<span class="net-bars"><i></i><i></i><i></i></span><span class="net-text"></span>';
+            card.appendChild(badge);
+        }
+        const labels = { good: '良好', fair: '普通', poor: '不穩', unknown: '連線中' };
+        badge.className = `net-badge q-${info.quality}`;
+        badge.querySelector('.net-text').textContent = info.text || labels[info.quality];
+        badge.title = info.title || `連線品質：${labels[info.quality]}`;
+    }
+
+    updateParticipants(participants, hostId, currentUserId, onTransferHost, extra = {}) {
+        const muted = extra.muted || new Set();
+        this.mentionNames = participants.filter(p => p.userId !== currentUserId).map(p => p.displayName);
+        this.allNames = participants.map(p => p.displayName);
         console.debug('UI.updateParticipants called', { participants, hostId, currentUserId });
         this.elements.participantsList.innerHTML = '';
 
@@ -945,18 +1199,50 @@ class UIManager {
             const li = document.createElement('li');
             const isHost = p.userId === hostId;
             const isSelf = p.userId === currentUserId;
+            if (isHost) li.classList.add('is-host');
 
             const info = document.createElement('span');
-            info.textContent = `${p.displayName}${isSelf ? ' (自己)' : ''}${isHost ? ' 👑' : ''}`;
+            info.className = 'participant-name';
+            info.textContent = `${p.displayName}${isSelf ? ' (自己)' : ''}${isHost ? ' 👑' : ''}${muted.has(p.userId) ? ' 🔇' : ''}`;
+            if (!isSelf) {
+                info.title = '點一下可以 @提及';
+                info.addEventListener('click', () => this.insertMention(p.displayName));
+            }
             li.appendChild(info);
 
             if (currentUserId === hostId && !isSelf && !isHost) {
+                const actions = document.createElement('div');
+                actions.className = 'participant-actions';
+
                 const btn = document.createElement('button');
                 btn.textContent = '設為房主';
-                btn.style.padding = '4px 8px';
-                btn.style.fontSize = '10px';
                 btn.addEventListener('click', () => onTransferHost(p.userId));
-                li.appendChild(btn);
+                actions.appendChild(btn);
+
+                const muteBtn = document.createElement('button');
+                const isMuted = muted.has(p.userId);
+                muteBtn.textContent = isMuted ? '解除禁言' : '禁言';
+                muteBtn.addEventListener('click', () => extra.onMute && extra.onMute(p.userId, !isMuted));
+                actions.appendChild(muteBtn);
+
+                // 踢人需要按兩次確認，避免誤觸
+                const kickBtn = document.createElement('button');
+                kickBtn.className = 'danger-btn';
+                kickBtn.textContent = '踢出';
+                kickBtn.addEventListener('click', () => {
+                    if (kickBtn.dataset.confirm === '1') {
+                        extra.onKick && extra.onKick(p.userId);
+                        return;
+                    }
+                    kickBtn.dataset.confirm = '1';
+                    kickBtn.textContent = '確定？';
+                    setTimeout(() => {
+                        kickBtn.dataset.confirm = '';
+                        kickBtn.textContent = '踢出';
+                    }, 3000);
+                });
+                actions.appendChild(kickBtn);
+                li.appendChild(actions);
             }
 
             this.elements.participantsList.appendChild(li);
@@ -971,28 +1257,273 @@ class UIManager {
         } catch (e) { }
     }
 
-    appendMessage(msg, currentUserId) {
+    appendMessage(msg, currentUserId, ctx = {}) {
         const { from, text, timestamp } = msg;
         if (!text) return;
 
         const message = document.createElement('div');
         const isSelf = from && from.userId === currentUserId;
+        const myName = ctx.myName || '';
+        const mentionsMe = !isSelf && !!myName && text.includes('@' + myName);
         message.classList.add('message', isSelf ? 'self' : 'other');
+        if (mentionsMe) message.classList.add('mentioned');
 
         const content = document.createElement('div');
-        content.textContent = text;
+        content.className = 'message-text';
+        this.renderMentions(content, text, myName);
 
         const meta = document.createElement('div');
         meta.classList.add('meta');
-        const time = timestamp ? new Date(timestamp) : new Date();
-        const formatted = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
-        meta.textContent = `${from ? from.displayName : '系統'} · ${formatted}`;
+        const isHostMsg = from && ctx.hostId && from.userId === ctx.hostId;
+        if (isHostMsg) message.classList.add('from-host');
+        meta.textContent = `${from ? from.displayName : '系統'}${isHostMsg ? ' 👑' : ''} · ${formatTime(timestamp)}`;
 
         message.appendChild(content);
         message.appendChild(meta);
 
-        this.elements.messages.appendChild(message);
-        this.elements.messages.scrollTop = this.elements.messages.scrollHeight;
+        this.appendToMessages(message);
+
+        if (mentionsMe) this.showNotification(`💬 ${from.displayName} 提到了你`);
+        this.addDanmaku(text, { isSelf, isMention: mentionsMe });
+    }
+
+    // 把 @暱稱 包成高亮的 <span>（用 DOM 節點組字，避免 XSS）
+    renderMentions(container, text, myName) {
+        const names = (this.allNames || []).filter(Boolean).sort((a, b) => b.length - a.length);
+        if (!names.length || !text.includes('@')) {
+            container.textContent = text;
+            return;
+        }
+        const re = new RegExp('@(' + names.map(escapeRegExp).join('|') + ')', 'g');
+        let last = 0;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            if (m.index > last) container.appendChild(document.createTextNode(text.slice(last, m.index)));
+            const span = document.createElement('span');
+            span.className = 'mention' + (m[1] === myName ? ' mention-me' : '');
+            span.textContent = m[0];
+            container.appendChild(span);
+            last = m.index + m[0].length;
+        }
+        if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
+    }
+
+    appendSystemMessage(text) {
+        const el = document.createElement('div');
+        el.className = 'message system';
+        el.textContent = `${text} · ${formatTime()}`;
+        this.appendToMessages(el);
+    }
+
+    appendToMessages(el) {
+        const box = this.elements.messages;
+        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        box.appendChild(el);
+        // 使用者正在往上翻舊訊息時不要硬拉到底
+        if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    setChatMuted(isMuted) {
+        const input = this.elements.messageInput;
+        input.disabled = isMuted;
+        this.elements.sendBtn.disabled = isMuted;
+        input.placeholder = isMuted ? '🔇 你已被房主禁言' : '輸入訊息，打 @ 可以提及成員...';
+    }
+
+    /* ---------- @提及 自動完成 ---------- */
+    bindMentionEvents() {
+        const input = this.elements.messageInput;
+        const box = this.elements.mentionSuggest;
+        if (!input || !box) return;
+        this.mentionIndex = 0;
+
+        const currentQuery = () => {
+            const pos = input.selectionStart || input.value.length;
+            const before = input.value.slice(0, pos);
+            const m = before.match(/@([^\s@]*)$/);
+            return m ? { query: m[1], start: pos - m[0].length, end: pos } : null;
+        };
+
+        const render = () => {
+            const q = currentQuery();
+            const names = this.mentionNames || [];
+            const list = q ? names.filter(n => n.toLowerCase().includes(q.query.toLowerCase())).slice(0, 6) : [];
+            this.mentionMatches = list;
+            this.mentionRange = q;
+            if (!list.length) { box.classList.add('hidden'); return; }
+            this.mentionIndex = Math.min(this.mentionIndex, list.length - 1);
+            box.innerHTML = '';
+            list.forEach((name, i) => {
+                const item = document.createElement('div');
+                item.className = 'mention-item' + (i === this.mentionIndex ? ' active' : '');
+                item.textContent = '@' + name;
+                item.addEventListener('mousedown', (ev) => {
+                    ev.preventDefault();
+                    this.applyMention(name);
+                });
+                box.appendChild(item);
+            });
+            box.classList.remove('hidden');
+        };
+
+        input.addEventListener('input', () => { this.mentionIndex = 0; render(); });
+        input.addEventListener('blur', () => setTimeout(() => box.classList.add('hidden'), 100));
+        input.addEventListener('keydown', (ev) => {
+            if (ev.isComposing) return; // 注音/拼音輸入法還在選字時不要攔截 Enter
+            if (box.classList.contains('hidden') || !this.mentionMatches || !this.mentionMatches.length) return;
+            if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+                ev.preventDefault();
+                const n = this.mentionMatches.length;
+                this.mentionIndex = (this.mentionIndex + (ev.key === 'ArrowDown' ? 1 : n - 1)) % n;
+                render();
+            } else if (ev.key === 'Enter' || ev.key === 'Tab') {
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+                // preventDefault 會讓這次 Enter 不觸發 keypress，所以只會選人、不會送出訊息
+                this.applyMention(this.mentionMatches[this.mentionIndex]);
+            } else if (ev.key === 'Escape') {
+                box.classList.add('hidden');
+            }
+        });
+    }
+
+    applyMention(name) {
+        const input = this.elements.messageInput;
+        const r = this.mentionRange;
+        if (!r) return this.insertMention(name);
+        const v = input.value;
+        input.value = v.slice(0, r.start) + '@' + name + ' ' + v.slice(r.end);
+        const caret = r.start + name.length + 2;
+        input.setSelectionRange(caret, caret);
+        this.elements.mentionSuggest.classList.add('hidden');
+        input.focus();
+    }
+
+    insertMention(name) {
+        const input = this.elements.messageInput;
+        if (input.disabled) return;
+        const v = input.value;
+        input.value = `${v}${v && !v.endsWith(' ') ? ' ' : ''}@${name} `;
+        this.switchTab('chat');
+        input.focus();
+    }
+
+    /* ---------- 彈幕 ---------- */
+    setDanmakuEnabled(on) {
+        this.danmakuEnabled = on;
+        const btn = this.elements.danmakuToggle;
+        if (btn) {
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-pressed', String(on));
+            btn.title = on ? '彈幕：開（點一下關閉）' : '彈幕：關（點一下開啟）';
+        }
+        if (!on && this.elements.danmakuLayer) this.elements.danmakuLayer.innerHTML = '';
+        try { localStorage.setItem('welive.danmaku', on ? '1' : '0'); } catch (e) { }
+    }
+
+    addDanmaku(text, { isSelf = false, isMention = false } = {}) {
+        if (this.danmakuEnabled === false) return;
+        const layer = this.elements.danmakuLayer;
+        if (!layer || !layer.clientWidth) return;
+
+        const LANE_H = 40;
+        const laneCount = Math.max(2, Math.floor((layer.clientHeight * 0.7) / LANE_H));
+        if (!this.danmakuLanes || this.danmakuLanes.length !== laneCount) {
+            this.danmakuLanes = new Array(laneCount).fill(0);
+        }
+        // 找一條「上一則已經完全離開右邊界」的軌道，避免重疊
+        const now = performance.now();
+        let lane = this.danmakuLanes.findIndex(t => t <= now);
+        if (lane === -1) lane = this.danmakuLanes.indexOf(Math.min(...this.danmakuLanes));
+
+        const el = document.createElement('div');
+        el.className = 'danmaku-item' + (isSelf ? ' self' : '') + (isMention ? ' mention' : '');
+        el.textContent = text.length > 60 ? text.slice(0, 60) + '…' : text;
+        el.style.top = `${lane * LANE_H + 10}px`;
+        layer.appendChild(el);
+
+        const w = layer.clientWidth;
+        const ew = el.offsetWidth;
+        const duration = CONFIG.DANMAKU_DURATION_MS;
+        const speed = (w + ew) / duration; // px per ms
+        this.danmakuLanes[lane] = now + (ew + 24) / speed;
+
+        const anim = el.animate(
+            [{ transform: `translateX(${w}px)` }, { transform: `translateX(${-ew}px)` }],
+            { duration, easing: 'linear' }
+        );
+        anim.onfinish = () => el.remove();
+    }
+
+    /* ---------- 側邊欄分頁 ---------- */
+    switchTab(tab) {
+        this.elements.tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        this.elements.chatPanel.classList.toggle('hidden', tab !== 'chat');
+        this.elements.queuePanel.classList.toggle('hidden', tab !== 'queue');
+        if (tab === 'queue' && this.elements.queueCount) this.elements.queueCount.classList.remove('pulse');
+    }
+
+    /* ---------- KTV 點歌佇列 ---------- */
+    renderQueue(state, ctx, onRemove) {
+        const e = this.elements;
+        const np = state.nowPlaying;
+        const queue = state.queue || [];
+        const canManage = (item) => ctx.isHost || item.requestedBy.userId === ctx.myId;
+
+        e.nowPlaying.classList.toggle('empty', !np);
+        e.nowPlaying.innerHTML = '';
+        const label = document.createElement('div');
+        label.className = 'np-label';
+        label.textContent = np ? '● 正在演唱' : '正在演唱';
+        const title = document.createElement('div');
+        title.className = 'np-title';
+        title.textContent = np ? `${np.song}${np.artist ? ' — ' + np.artist : ''}` : '目前沒有歌曲';
+        const meta = document.createElement('div');
+        meta.className = 'np-meta';
+        meta.textContent = np
+            ? `🎤 ${np.singer ? np.singer.displayName : '大家一起唱'} · 點歌：${np.requestedBy.displayName}`
+            : '在下面點一首歌開始吧！';
+        e.nowPlaying.append(label, title, meta);
+
+        const canSkip = !!np && (ctx.isHost || np.requestedBy.userId === ctx.myId || (np.singer && np.singer.userId === ctx.myId));
+        e.queueNextBtn.disabled = !canSkip;
+        e.queueNextBtn.title = canSkip ? '切到下一首' : '只有房主、點歌者或演唱者可以切歌';
+
+        e.queueList.innerHTML = '';
+        if (!queue.length) {
+            const li = document.createElement('li');
+            li.className = 'queue-empty';
+            li.textContent = '佇列是空的';
+            e.queueList.appendChild(li);
+        }
+        queue.forEach((item, i) => {
+            const li = document.createElement('li');
+            li.className = 'queue-item' + (i === 0 ? ' up-next' : '');
+            const info = document.createElement('div');
+            info.className = 'queue-info';
+            const t = document.createElement('div');
+            t.className = 'queue-title';
+            t.textContent = `${item.song}${item.artist ? ' — ' + item.artist : ''}`;
+            const m = document.createElement('div');
+            m.className = 'queue-meta';
+            m.textContent = `${i === 0 ? '下一首 · ' : ''}🎤 ${item.singer ? item.singer.displayName : '大家'} · 點歌：${item.requestedBy.displayName}`;
+            info.append(t, m);
+            li.appendChild(info);
+            if (canManage(item)) {
+                const rm = document.createElement('button');
+                rm.className = 'queue-remove';
+                rm.title = '移除';
+                rm.textContent = '✕';
+                rm.addEventListener('click', () => onRemove(item.id));
+                li.appendChild(rm);
+            }
+            e.queueList.appendChild(li);
+        });
+
+        const total = queue.length + (np ? 1 : 0);
+        e.queueCount.textContent = String(total);
+        e.queueCount.classList.toggle('hidden', total === 0);
+        if (ctx.changed && e.queuePanel.classList.contains('hidden')) e.queueCount.classList.add('pulse');
     }
 
     createReaction(emoji, userId) {
@@ -1163,6 +1694,15 @@ class UIManager {
     clearConference() {
         this.elements.messages.innerHTML = '';
         this.elements.participantsList.innerHTML = '';
+        if (this.elements.danmakuLayer) this.elements.danmakuLayer.innerHTML = '';
+        this.setChatMuted(false);
+        this.renderQueue({ nowPlaying: null, queue: [] }, { isHost: false, myId: null }, () => { });
+        this.queueSongId = null;
+        this.resetPrompter();
+        this.switchTab('chat');
+        this.applyRoomMode('call', true, false);
+        const selfBadge = this.elements.localContainer.querySelector('.net-badge');
+        if (selfBadge) selfBadge.remove();
         const remoteCards = document.querySelectorAll('.video-card:not([data-user="self"])');
         remoteCards.forEach(c => c.remove());
     }
@@ -1381,9 +1921,22 @@ class RoomManager {
         this.isRecording = false;
         this.mediaRecorder = null;
         this.recordedChunks = [];
+        // 新功能狀態
+        this.mode = 'call';            // 'call' 視訊通話 / 'live' 直播
+        this.participants = new Map();
+        this.muted = new Set();        // 被禁言的 userId
+        this.queueState = null;        // KTV 佇列
+        this.clockOffset = 0;          // 伺服器時間 - 本機時間
+        this.statsTimer = null;
+        this.onKicked = null;
     }
 
     async initLocalStream() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error('navigator.mediaDevices 不可用，isSecureContext =', window.isSecureContext);
+            this.ui.showNotification('瀏覽器不允許使用相機：請用 https:// 或 http://localhost 開啟（不能用區網 IP 的 http）', true);
+            return false;
+        }
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             this.ui.elements.localVideo.srcObject = this.localStream;
@@ -1391,7 +1944,11 @@ class RoomManager {
             return true;
         } catch (err) {
             console.error('Media Error:', err);
-            this.ui.showNotification('無法存取相機或麥克風', true);
+            const hint = err && err.name === 'NotAllowedError' ? '（權限被拒絕，請在網址列允許相機/麥克風）'
+                : err && err.name === 'NotFoundError' ? '（找不到相機或麥克風裝置）'
+                : err && err.name === 'NotReadableError' ? '（相機正被其他程式佔用，例如另一個分頁或 Zoom）'
+                : `（${err && err.name}）`;
+            this.ui.showNotification('無法存取相機或麥克風' + hint, true);
             return false;
         }
     }
@@ -1697,16 +2254,26 @@ class RoomManager {
         this.localStream.getAudioTracks().forEach(t => t.enabled = this.mediaState.mic);
     }
 
-    connectSocket(roomId) {
+    isLive() {
+        return this.mode === 'live';
+    }
+
+    amHost() {
+        return !!this.user && this.hostUserId === this.user.id;
+    }
+
+    connectSocket(roomId, token) {
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = `${protocol}://${window.location.host}/ws?roomId=${roomId}&userId=${this.user.id}&displayName=${encodeURIComponent(this.user.displayName)}`;
+        const wsUrl = `${protocol}://${window.location.host}/ws?roomId=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(this.user.id)}&token=${encodeURIComponent(token)}`;
 
         this.socket = new WebSocket(wsUrl);
 
         this.socket.onopen = () => console.log('✅ WS Connected');
-        this.socket.onclose = () => {
-            console.log('⚠️ WS Closed');
-            if (this.currentRoom) this.ui.showNotification('已斷開連線', true);
+        this.socket.onclose = (ev) => {
+            console.log('⚠️ WS Closed', ev.code, ev.reason);
+            if (!this.currentRoom) return;
+            if (ev.code === 4003) this.ui.showNotification('連線未授權，請重新加入房間', true);
+            else if (ev.code !== 4005) this.ui.showNotification('已斷開連線', true);
         };
         this.socket.onerror = (err) => console.error('WS Error', err);
 
@@ -1724,19 +2291,19 @@ class RoomManager {
         // Special-case: transfer-host should go through server REST API so server
         // updates room state and broadcasts 'host-transferred' to all sockets.
         if (type === 'transfer-host') {
-            try {
-                const roomId = this.currentRoom && this.currentRoom.id;
-                if (!roomId) return;
-                fetch(`${CONFIG.API_BASE}/api/rooms/${roomId}/transfer-host`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: this.user.id, newHostUserId: payload.newHostUserId })
-                }).then(res => res.json()).then(() => {
-                    // server will broadcast host-transferred; nothing else to do here
-                }).catch(err => console.warn('transfer-host REST failed', err));
-            } catch (err) {
-                console.warn('transfer-host error', err);
-            }
+            const roomId = this.currentRoom && this.currentRoom.id;
+            if (!roomId) return;
+            fetch(`${CONFIG.API_BASE}/api/rooms/${roomId}/transfer-host`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: this.user.id, newHostUserId: payload.newHostUserId })
+            }).then(async res => {
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    this.ui.showNotification(data.message || '轉移房主失敗', true);
+                }
+                // 成功時伺服器會廣播 host-transferred
+            }).catch(err => console.warn('transfer-host REST failed', err));
             return;
         }
 
@@ -1766,52 +2333,65 @@ class RoomManager {
                 await this.handleCandidate(msg);
                 break;
             case 'chat':
-                this.ui.appendMessage(msg, this.user.id);
+                this.ui.appendMessage(msg, this.user.id, { hostId: this.hostUserId, myName: this.user.displayName });
                 break;
             case 'reaction':
-                this.ui.createReaction(msg.emoji, msg.from.userId);
+                // 自己按的表情已經在本地顯示過了
+                if (msg.from.userId !== this.user.id) this.ui.createReaction(msg.emoji, msg.from.userId);
                 break;
             case 'host-transferred':
-                this.handleHostTransfer(msg);
+                await this.handleHostTransfer(msg);
                 break;
             case 'notification':
                 this.ui.showNotification(msg.message, msg.isError);
                 break;
+
+            // ---- 房主權限管理 ----
+            case 'mute-state': {
+                if (msg.muted) this.muted.add(msg.userId); else this.muted.delete(msg.userId);
+                const isMe = msg.userId === this.user.id;
+                this.ui.appendSystemMessage(`${msg.byName} ${msg.muted ? '將' : '解除了'} ${isMe ? '你' : msg.targetName} ${msg.muted ? '禁言' : '的禁言'}`);
+                if (isMe) {
+                    this.ui.setChatMuted(msg.muted);
+                    this.ui.showNotification(msg.muted ? '你已被房主禁言' : '房主解除了你的禁言', msg.muted);
+                }
+                this.updateParticipantsUI();
+                break;
+            }
+            case 'user-kicked':
+                this.ui.appendSystemMessage(`${msg.targetName} 被房主移出了房間`);
+                break;
+            case 'kicked':
+                if (this.onKicked) this.onKicked(msg.byName);
+                break;
+
+            // ---- KTV 點歌佇列 ----
+            case 'queue-update':
+                this.applyQueueState(msg);
+                break;
+
             case 'song-request': {
                 // Someone is requesting current user to sing a song
-                const requesterName = msg.requesterName;
-                const songName = msg.songName;
-                const artistName = msg.artistName;
-                this.ui.showSongRequestNotification(requesterName, songName, artistName);
+                this.ui.showSongRequestNotification(msg.requesterName, msg.songName, msg.artistName, msg.requesterId);
                 break;
             }
             case 'song-request-accepted': {
-                this.ui.showNotification(`${msg.responderName} 接受了你的點歌`);
+                this.ui.showNotification(`${msg.responderName} 接受了點歌`);
                 break;
             }
             case 'song-request-rejected': {
-                this.ui.showNotification(`${msg.responderName} 拒絕了你的點歌`, true);
-                break;
-            }
-            case 'singing-started': {
-                this.currentUserSinging = true;
-                break;
-            }
-            case 'singing-ended': {
-                this.currentUserSinging = false;
+                this.ui.showNotification(`${msg.responderName} 拒絕了點歌`, true);
                 break;
             }
             case 'poll-started': {
                 const poll = msg.poll;
                 if (!poll) break;
                 this.currentPollId = poll.id;
-                const isHost = (this.hostUserId === this.user.id);
                 const counts = poll.counts || (poll.options ? poll.options.map(() => 0) : []);
-                this.ui.renderPoll(poll, isHost, counts);
+                this.ui.renderPoll(poll, this.amHost(), counts);
                 break;
             }
             case 'poll-update': {
-                // update counts
                 if (msg.pollId && Array.isArray(msg.counts)) {
                     this.ui.updatePollCounts(msg.counts);
                 }
@@ -1825,28 +2405,23 @@ class RoomManager {
                     this.ui.showNotification('投票已結束');
                 }
                 this.currentPollId = null;
-                // clear UI (keep results visible briefly)
                 setTimeout(() => this.ui.clearPollDisplay(), 3000);
                 break;
             }
-            // ... (在 switch 語句內) ...
 
-            // 1. 新增：處理開啟白板訊號
+            // 收到開啟白板訊號：打開白板，但不要再回傳訊號給對方
             case 'whiteboard-open': {
-                // 收到訊號時，開啟白板，但傳入 false 代表不要再回傳訊號給對方
                 this.ui.showWhiteboard(false);
                 this.ui.showNotification('夥伴開啟了白板');
                 break;
             }
-
-            // 2. 修改：收到畫畫訊號時
             case 'whiteboard-draw': {
                 const { x0, y0, x1, y1, color } = msg;
                 const canvas = this.ui.elements.whiteboardCanvas;
-                
+
                 // 如果收到畫畫指令，但白板是關著的，就強制幫他打開 (被動開啟)
                 if (this.ui.elements.whiteboardModal.classList.contains('hidden')) {
-                    this.ui.showWhiteboard(false); 
+                    this.ui.showWhiteboard(false);
                 }
 
                 if (canvas) {
@@ -1861,8 +2436,6 @@ class RoomManager {
                 }
                 break;
             }
-            
-            // ... (原本的 case whiteboard-clear ...)
             case 'whiteboard-clear': {
                 this.ui.clearCanvas();
                 this.ui.showNotification('有人清除了白板');
@@ -1873,35 +2446,48 @@ class RoomManager {
 
     handleRoomState(msg) {
         this.hostUserId = msg.hostUserId;
+        this.mode = msg.mode || 'call';
         this.participants = new Map();
+        this.muted = new Set(msg.muted || []);
 
-        // Update UI for self
         this.ui.elements.roomName.textContent = this.currentRoom.name;
+        this.ui.applyRoomMode(this.mode, this.amHost(), this.currentRoom.hasPassword);
+        this.ui.setChatMuted(this.muted.has(this.user.id));
 
-        // Process participants
         if (msg.participants) {
             msg.participants.forEach(p => {
-                if (p.userId !== this.user.id) {
-                    this.participants.set(p.userId, p);
-                    this.createPeerConnection(p.userId, true); // Initiate connection
+                if (p.userId === this.user.id) return;
+                this.participants.set(p.userId, p);
+                if (!this.isLive()) {
+                    // 視訊通話：新加入的人主動和每個人建立連線（mesh）
+                    this.createPeerConnection(p.userId, true);
+                } else if (this.amHost()) {
+                    // 直播：只有房主推流給每位觀眾
+                    this.createPeerConnection(p.userId, true);
                 }
+                // 直播觀眾：什麼都不做，等房主送 offer 過來
             });
         }
         // If there's an active poll included in room state, render it
         if (msg.currentPoll) {
             this.currentPollId = msg.currentPoll.id;
-            const isHost = (this.hostUserId === this.user.id);
-            this.ui.renderPoll(msg.currentPoll, isHost, msg.currentPoll.counts || (msg.currentPoll.options ? msg.currentPoll.options.map(() => 0) : []));
+            this.ui.renderPoll(msg.currentPoll, this.amHost(), msg.currentPoll.counts || (msg.currentPoll.options ? msg.currentPoll.options.map(() => 0) : []));
         }
+        this.applyQueueState(msg);
         this.updateParticipantsUI();
+        this.startStatsMonitor();
     }
 
     handleUserJoined(user) {
         if (user.userId === this.user.id) return;
         this.participants.set(user.userId, user);
-        this.ui.showNotification(`${user.displayName} 加入房間`);
+        this.ui.showNotification(`${user.displayName} ${this.isLive() ? '進來看直播了' : '加入房間'}`);
         this.updateParticipantsUI();
-        // Wait for offer from new user (or initiate if we are host/older peer - simplified here to let joiner initiate via room-state logic usually, but actually room-state is for joiner. Existing peers wait for offer.)
+        // 視訊通話：等新成員送 offer 過來。
+        // 直播：房主主動把直播畫面推給新觀眾。
+        if (this.isLive() && this.amHost()) {
+            this.createPeerConnection(user.userId, true);
+        }
     }
 
     handleUserLeft(userId) {
@@ -1920,56 +2506,45 @@ class RoomManager {
         console.log(`[WebRTC] 正在建立與 ${targetUserId} 的連線 (發起者: ${isInitiator})`);
 
         const pc = new RTCPeerConnection(CONFIG.ICE_SERVERS);
-        
-        // 修正：直接使用對方的 Stream，不手動組裝，相容性較好
-        // const remoteStream = new MediaStream(); <-- 舊的不需要了
 
-        // Add local tracks
+        // Add local tracks（直播觀眾沒有 localStream，只接收不傳送）
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => pc.addTrack(track, this.localStream));
+            const videoTrack = (this.isScreenSharing && this.screenTrack) ? this.screenTrack : this.localStream.getVideoTracks()[0];
+            const audioTrack = (this.isScreenSharing && this.screenAudioTracks) ? this.screenAudioTracks : this.localStream.getAudioTracks()[0];
+            if (videoTrack) pc.addTrack(videoTrack, this.localStream);
+            if (audioTrack) pc.addTrack(audioTrack, this.localStream);
         }
 
-        // ★★★ 關鍵修正 1：更穩定的畫面接收邏輯 ★★★
         pc.ontrack = (event) => {
             console.log(`[WebRTC] 收到 ${targetUserId} 的影像串流`);
-            
             const user = this.participants.get(targetUserId);
             if (user) {
-                // 確保視訊卡片存在
                 const videoEl = this.ui.ensureVideoCard(user, user.userId === this.hostUserId);
-                
                 // 直接使用對方傳過來的原始 Stream (解決 iOS/Safari 黑屏問題)
                 if (event.streams && event.streams[0]) {
                     videoEl.srcObject = event.streams[0];
-                    
-                    // 嘗試播放 (解決部分瀏覽器自動播放限制)
                     videoEl.play().catch(e => console.warn('自動播放被阻擋:', e));
                 }
             }
         };
 
-        // ICE Candidates
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 this.sendSignal('candidate', { targetUserId, candidate: event.candidate });
             }
         };
 
-        // ★★★ 關鍵修正 2：加入連線狀態監聽 (這樣才知道發生什麼事) ★★★
         pc.oniceconnectionstatechange = () => {
             const state = pc.iceConnectionState;
             console.log(`[WebRTC] 與 ${targetUserId} 的連線狀態: ${state}`);
-            
             if (state === 'failed' || state === 'disconnected') {
-                this.ui.showNotification(`與 ${targetUserId} 的連線不穩定 (${state})`, true);
-            }
-            if (state === 'connected') {
-                console.log(`[WebRTC] 成功連線！應該要看到畫面了`);
+                const name = (this.participants.get(targetUserId) || {}).displayName || targetUserId;
+                this.ui.showNotification(`與 ${name} 的連線不穩定 (${state})`, true);
             }
         };
 
-        // 這裡不需要存 remoteStream 了，因為我們直接用 event.streams[0]
-        this.peers.set(targetUserId, { pc });
+        // pendingCandidates：remote description 還沒設定好之前先收到的 ICE candidate 要先排隊
+        this.peers.set(targetUserId, { pc, pendingCandidates: [], lastStats: null });
 
         if (isInitiator) {
             const offer = await pc.createOffer();
@@ -1984,6 +2559,7 @@ class RoomManager {
         const { from, offer } = msg;
         const pc = await this.createPeerConnection(from.userId, false);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        await this.flushCandidates(from.userId);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         this.sendSignal('answer', { targetUserId: from.userId, answer });
@@ -1994,14 +2570,27 @@ class RoomManager {
         const peer = this.peers.get(from.userId);
         if (peer) {
             await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await this.flushCandidates(from.userId);
         }
     }
 
     async handleCandidate(msg) {
         const { from, candidate } = msg;
         const peer = this.peers.get(from.userId);
-        if (peer) {
-            await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (!peer) return;
+        if (!peer.pc.remoteDescription) {
+            peer.pendingCandidates.push(candidate);
+            return;
+        }
+        await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn('addIceCandidate', e));
+    }
+
+    async flushCandidates(userId) {
+        const peer = this.peers.get(userId);
+        if (!peer || !peer.pendingCandidates.length) return;
+        const list = peer.pendingCandidates.splice(0);
+        for (const c of list) {
+            await peer.pc.addIceCandidate(new RTCIceCandidate(c)).catch(e => console.warn('addIceCandidate', e));
         }
     }
 
@@ -2013,46 +2602,184 @@ class RoomManager {
         }
     }
 
-    handleHostTransfer(msg) {
-        // Accept multiple possible property names from server payloads
+    async handleHostTransfer(msg) {
         const newHost = msg.newHostUserId || msg.hostUserId || msg.newHostId || msg.newHost;
-        console.debug('handleHostTransfer received', { msg, newHost, currentHost: this.hostUserId, participantsCount: this.participants.size });
         if (!newHost) {
             console.warn('handleHostTransfer: no host id in message', msg);
             return;
         }
+        const prevHost = this.hostUserId;
+        if (newHost === prevHost) return;
 
         this.hostUserId = newHost;
-        const name = (this.participants.get(newHost) && this.participants.get(newHost).displayName) || (this.user && this.user.id === newHost ? this.user.displayName : null);
+        this.muted.delete(newHost);
+        const isMe = this.user && this.user.id === newHost;
+        const name = isMe ? '你' : ((this.participants.get(newHost) || {}).displayName || '');
         this.ui.showNotification(name ? `房主已變更：${name}` : '房主已變更');
+        this.ui.appendSystemMessage(`👑 ${isMe ? '你' : name} 成為新房主`);
+        if (isMe) this.ui.setChatMuted(false);
 
-        // Update participants UI so the new host sees the transfer buttons
+        if (this.isLive()) {
+            await this.switchBroadcaster(prevHost);
+        } else {
+            this.participants.forEach(p => this.ui.ensureVideoCard(p, p.userId === this.hostUserId));
+        }
         this.updateParticipantsUI();
+    }
 
-        // Re-organize video layout
-        this.participants.forEach(p => {
-            this.ui.ensureVideoCard(p, p.userId === this.hostUserId);
-        });
+    // 直播換房主：舊房主停止推流、新房主開鏡頭重新推流給所有觀眾
+    async switchBroadcaster(prevHost) {
+        // 這段必須同步執行完，才不會吃掉新房主馬上送來的 offer
+        Array.from(this.peers.keys()).forEach(id => this.closePeer(id));
+        document.querySelectorAll('.video-card:not([data-user="self"])').forEach(c => c.remove());
+
+        if (prevHost === this.user.id) {
+            if (this.isScreenSharing) await this.stopScreenShare();
+            this.stopLocalStream();
+        }
+        this.ui.applyRoomMode(this.mode, this.amHost(), this.currentRoom && this.currentRoom.hasPassword);
+
+        if (this.amHost()) {
+            const ok = this.localStream ? true : await this.initLocalStream();
+            if (!ok) {
+                this.ui.showNotification('無法開啟鏡頭，觀眾暫時看不到畫面', true);
+                return;
+            }
+            this.ui.applyRoomMode(this.mode, true, this.currentRoom && this.currentRoom.hasPassword);
+            this.participants.forEach(p => this.createPeerConnection(p.userId, true));
+        }
     }
 
     updateParticipantsUI() {
+        if (!this.user || !this.participants) return;
         const list = [
             { userId: this.user.id, displayName: this.user.displayName },
             ...Array.from(this.participants.values())
         ];
 
         this.ui.updateParticipants(list, this.hostUserId, this.user.id, (targetId) => {
-            // Optimistically apply host transfer locally so UI updates immediately
-            // (server should also broadcast a host-transferred event)
-            if (this.hostUserId === this.user.id) {
-                this.hostUserId = targetId;
-                // Trigger local handler to update UI/layout
-                this.handleHostTransfer({ newHostUserId: targetId });
+            // 伺服器確認後會廣播 host-transferred，所有人（包含自己）一起更新
+            this.sendSignal('transfer-host', { newHostUserId: targetId });
+        }, {
+            muted: this.muted,
+            onMute: (targetUserId, muted) => this.sendSignal('mute-user', { targetUserId, muted }),
+            onKick: (targetUserId) => this.sendSignal('kick-user', { targetUserId }),
+        });
+
+        if (this.isLive()) {
+            const viewers = list.filter(p => p.userId !== this.hostUserId).length;
+            this.ui.updateViewerCount(viewers);
+        }
+    }
+
+    /* ---------- KTV 點歌佇列 ---------- */
+    applyQueueState(msg) {
+        if (!('nowPlaying' in msg)) return;
+        // 伺服器時間和本機時間的差，用來讓每個人的歌詞捲動同步
+        if (msg.serverNow) this.clockOffset = msg.serverNow - Date.now();
+        const np = msg.nowPlaying || null;
+        const prevId = this.queueState && this.queueState.nowPlaying ? this.queueState.nowPlaying.id : null;
+        const prevLen = this.queueState ? (this.queueState.queue || []).length : 0;
+        this.queueState = { nowPlaying: np, queue: msg.queue || [] };
+
+        this.ui.renderQueue(this.queueState, {
+            isHost: this.amHost(),
+            myId: this.user.id,
+            changed: (np ? np.id : null) !== prevId || this.queueState.queue.length !== prevLen,
+        }, (id) => this.sendSignal('queue-remove', { id }));
+
+        const newId = np ? np.id : null;
+        if (newId === this.ui.queueSongId) return;
+        this.ui.queueSongId = newId;
+        if (np) {
+            const singer = np.singer ? np.singer.displayName : '大家';
+            this.ui.appendSystemMessage(`🎤 現在由 ${singer} 演唱《${np.song}》`);
+            const localStart = np.startedAt - (this.clockOffset || 0);
+            this.ui.fetchAndDisplayLyrics(np.song, np.artist, { silent: true }).then(ok => {
+                if (ok && this.ui.queueSongId === np.id) this.ui.startAutoScroll(localStart, 0, true);
+            });
+        } else {
+            this.ui.resetPrompter();
+        }
+    }
+
+    /* ---------- 網路品質監測（RTCPeerConnection.getStats）---------- */
+    startStatsMonitor() {
+        this.stopStatsMonitor();
+        this.statsTimer = setInterval(() => this.collectStats().catch(e => console.warn('stats', e)), CONFIG.STATS_INTERVAL_MS);
+    }
+
+    stopStatsMonitor() {
+        if (this.statsTimer) clearInterval(this.statsTimer);
+        this.statsTimer = null;
+    }
+
+    async collectStats() {
+        const results = [];
+        for (const [userId, peer] of this.peers) {
+            const report = await peer.pc.getStats();
+            let rtt = null, lost = 0, received = 0, remoteLoss = null, hasInbound = false;
+            report.forEach(r => {
+                if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && r.currentRoundTripTime != null) {
+                    rtt = r.currentRoundTripTime * 1000;
+                }
+                if (r.type === 'inbound-rtp') {
+                    hasInbound = true;
+                    lost += r.packetsLost || 0;
+                    received += r.packetsReceived || 0;
+                }
+                if (r.type === 'remote-inbound-rtp' && r.fractionLost != null) {
+                    remoteLoss = Math.max(remoteLoss || 0, r.fractionLost);
+                }
+            });
+
+            // 丟包率用「這 2 秒內」的增量計算，不是累計值
+            let lossPct = 0;
+            if (hasInbound && received > 0) {
+                const prev = peer.lastStats || { lost: 0, received: 0 };
+                const dLost = Math.max(0, lost - prev.lost);
+                const dRecv = Math.max(0, received - prev.received);
+                lossPct = dLost + dRecv > 0 ? (dLost / (dLost + dRecv)) * 100 : 0;
+                peer.lastStats = { lost, received };
+            } else if (remoteLoss != null) {
+                lossPct = remoteLoss * 100; // 只送不收（直播房主）：看對方回報的丟包
             }
 
-            // Notify server of host transfer
-            this.sendSignal('transfer-host', { newHostUserId: targetId });
-        });
+            const state = peer.pc.iceConnectionState;
+            let quality;
+            if (state === 'failed' || state === 'disconnected') quality = 'poor';
+            else if (rtt == null) quality = 'unknown';
+            else if (rtt < 150 && lossPct < 2) quality = 'good';
+            else if (rtt < 400 && lossPct < 8) quality = 'fair';
+            else quality = 'poor';
+
+            const info = {
+                quality,
+                rtt,
+                lossPct,
+                text: rtt == null ? null : `${Math.round(rtt)}ms`,
+                title: rtt == null ? '連線建立中…' : `延遲 ${Math.round(rtt)} ms · 丟包 ${lossPct.toFixed(1)}%`,
+            };
+            results.push({ userId, info });
+            this.ui.updateNetBadge(userId, info);
+        }
+
+        // 直播房主看不到觀眾畫面，把所有觀眾連線狀況彙整顯示在自己的畫面上
+        if (this.isLive() && this.amHost()) {
+            const order = { poor: 3, fair: 2, unknown: 1, good: 0 };
+            const known = results.filter(r => r.info.rtt != null);
+            if (!results.length) {
+                this.ui.updateNetBadge('self', { quality: 'unknown', text: '等待觀眾', title: '目前沒有觀眾' });
+            } else {
+                const worst = results.reduce((a, b) => (order[b.info.quality] > order[a.info.quality] ? b : a));
+                const avg = known.length ? known.reduce((sum, r) => sum + r.info.rtt, 0) / known.length : null;
+                this.ui.updateNetBadge('self', {
+                    quality: worst.info.quality,
+                    text: `${results.length} 位觀眾${avg != null ? ' · ' + Math.round(avg) + 'ms' : ''}`,
+                    title: results.map(r => `${(this.participants.get(r.userId) || {}).displayName || r.userId}：${r.info.title}`).join('\n'),
+                });
+            }
+        }
     }
 }
 
@@ -2070,6 +2797,14 @@ class App {
         this.ui.bindPollEvents && this.ui.bindPollEvents();
         this.ui.bindSongRequestEvents && this.ui.bindSongRequestEvents();
         this.ui.bindWhiteboardEvents(this.room);
+        this.ui.bindMentionEvents();
+        this.room.onKicked = (byName) => this.handleKicked(byName);
+
+        // 彈幕預設開啟，記住使用者上次的選擇
+        let danmakuOn = true;
+        try { danmakuOn = localStorage.getItem('welive.danmaku') !== '0'; } catch (e) { }
+        this.ui.setDanmakuEnabled(danmakuOn);
+        this.ui.updateAutoScrollButton();
     }
 
     bindEvents() {
@@ -2098,19 +2833,35 @@ class App {
             e.preventDefault();
             const name = this.ui.elements.newRoomName.value.trim();
             if (!name) return;
+            const modeInput = document.querySelector('input[name="roomMode"]:checked');
+            const mode = modeInput ? modeInput.value : 'call';
+            const password = (this.ui.elements.newRoomPassword && this.ui.elements.newRoomPassword.value || '').trim();
+
+            if (!this.room.user) {
+                this.ui.showNotification('請先設定暱稱', true);
+                return;
+            }
 
             try {
                 const res = await fetch(`${CONFIG.API_BASE}/api/rooms`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, userId: this.room.user.id, displayName: this.room.user.displayName })
+                    body: JSON.stringify({ name, userId: this.room.user.id, displayName: this.room.user.displayName, mode, password })
                 });
-                const data = await res.json();
-                if (data.room) {
-                    this.joinRoom(data.room.id);
+                let data = null;
+                try { data = await res.json(); } catch (_) { /* 非 JSON 回應 */ }
+                if (!res.ok || !data || !data.room) {
+                    const reason = (data && data.message) || `伺服器回應 ${res.status}（請確認是用 node server.js 開啟網站，而不是直接開 index.html 或 Live Server）`;
+                    console.error('建立房間失敗：', res.status, data);
+                    this.ui.showNotification(`建立房間失敗：${reason}`, true);
+                    return;
                 }
+                this.ui.elements.newRoomName.value = '';
+                if (this.ui.elements.newRoomPassword) this.ui.elements.newRoomPassword.value = '';
+                this.joinRoom(data.room.id, { name: data.room.name });
             } catch (err) {
-                this.ui.showNotification('建立房間失敗', true);
+                console.error('建立房間失敗：', err);
+                this.ui.showNotification(`建立房間失敗：無法連線到伺服器（${err.message}）`, true);
             }
         });
 
@@ -2235,14 +2986,60 @@ class App {
 
         if (this.ui.elements.acceptSongRequestBtn) {
             this.ui.elements.acceptSongRequestBtn.addEventListener('click', () => {
+                const req = this.ui.pendingSongRequest || {};
+                // 伺服器收到後會把這首歌排進 KTV 佇列，演唱者是自己
                 this.room.sendSignal('song-request-accepted', {
-                    responderName: this.room.user.displayName
+                    songName: req.songName,
+                    artistName: req.artistName,
+                    requesterId: req.requesterId
                 });
                 if (this.ui.elements.songRequestNotification) {
                     this.ui.elements.songRequestNotification.classList.add('hidden');
                 }
             });
         }
+        if (this.ui.elements.rejectSongRequestBtn) {
+            this.ui.elements.rejectSongRequestBtn.addEventListener('click', () => {
+                this.room.sendSignal('song-request-rejected', {});
+            });
+        }
+
+        // ---- 側邊欄分頁 ----
+        this.ui.elements.tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => this.ui.switchTab(btn.dataset.tab));
+        });
+
+        // ---- 彈幕開關 ----
+        if (this.ui.elements.danmakuToggle) {
+            this.ui.elements.danmakuToggle.addEventListener('click', () => {
+                this.ui.setDanmakuEnabled(!this.ui.danmakuEnabled);
+            });
+        }
+
+        // ---- KTV 點歌佇列 ----
+        this.ui.elements.queueAddForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const song = this.ui.elements.queueSongInput.value.trim();
+            const artist = this.ui.elements.queueArtistInput.value.trim();
+            if (!song) return;
+            this.room.sendSignal('queue-add', { song, artist });
+            this.ui.elements.queueSongInput.value = '';
+            this.ui.elements.queueArtistInput.value = '';
+            this.ui.showNotification(`已點歌：${song}`);
+        });
+        this.ui.elements.queueNextBtn.addEventListener('click', () => this.room.sendSignal('queue-next'));
+        this.ui.elements.autoScrollBtn.addEventListener('click', () => this.ui.toggleAutoScroll());
+        this.ui.elements.scrollSpeed.addEventListener('change', () => {
+            const a = this.ui.autoScroll;
+            if (!a || !a.running) return;
+            if (a.synced) {
+                // 仍以歌曲開始時間為準，選同樣速度的人會看到同一行
+                this.ui.startAutoScroll(a.anchorTime, 0, true);
+            } else {
+                // 手動調整過進度：從目前這一行繼續
+                this.ui.startAutoScroll(Date.now(), Math.max(0, this.ui.prompterIndex));
+            }
+        });
 
         this.ui.elements.sendBtn.addEventListener('click', () => this.sendMessage());
         this.ui.elements.messageInput.addEventListener('keypress', (e) => {
@@ -2266,67 +3063,103 @@ class App {
         try {
             const res = await fetch(`${CONFIG.API_BASE}/api/rooms`);
             const data = await res.json();
-            this.ui.renderRooms(data.rooms || [], (id) => this.joinRoom(id));
+            this.ui.renderRooms(data.rooms || [], (room) => this.joinRoom(room.id, { name: room.name, needPassword: room.hasPassword }));
         } catch (e) {
             console.error(e);
         }
     }
 
-    async joinRoom(roomId) {
-        if (!await this.room.initLocalStream()) return;
-
+    async joinRoom(roomId, opts = {}) {
+        if (this.joining) return;
+        this.joining = true;
         try {
-            const res = await fetch(`${CONFIG.API_BASE}/api/rooms/${roomId}/join`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: this.room.user.id, displayName: this.room.user.displayName })
-            });
+            let password = null;
+            if (opts.needPassword) {
+                password = await this.ui.askPassword(opts.name || '');
+                if (password == null) return;
+            }
 
-            if (!res.ok) throw new Error('Join failed');
+            // 1. 先向伺服器報到（檢查密碼、黑名單、人數），拿到房間模式與通行證
+            let data;
+            for (; ;) {
+                const res = await fetch(`${CONFIG.API_BASE}/api/rooms/${roomId}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: this.room.user.id, displayName: this.room.user.displayName, password })
+                });
+                data = await res.json().catch(() => ({}));
+                if (res.ok) break;
+                if (res.status === 401 && data.needPassword) {
+                    password = await this.ui.askPassword(opts.name || '', password ? data.message : null);
+                    if (password == null) return;
+                    continue;
+                }
+                throw new Error(data.message || `伺服器回應 ${res.status}`);
+            }
 
-            const data = await res.json();
-            this.room.currentRoom = data.room;
+            // 2. 視訊通話：每個人都要開鏡頭；直播：只有房主開鏡頭，觀眾只看
+            const room = data.room;
+            const needCamera = room.mode !== 'live' || room.hostUserId === this.room.user.id;
+            if (needCamera) {
+                if (!await this.room.initLocalStream()) {
+                    this.notifyLeave(roomId);
+                    return;
+                }
+            } else {
+                this.room.stopLocalStream();
+            }
+
+            this.room.currentRoom = room;
+            this.room.mode = room.mode;
+            this.room.hostUserId = room.hostUserId;
+            this.ui.applyRoomMode(room.mode, room.hostUserId === this.room.user.id, room.hasPassword);
             this.ui.toggleConferenceMode(true);
-            this.room.connectSocket(roomId);
+            this.room.connectSocket(roomId, data.token);
         } catch (e) {
-            this.ui.showNotification('加入房間失敗', true);
+            console.error('加入房間失敗：', e);
+            this.ui.showNotification(`加入房間失敗：${e.message}`, true);
             this.room.stopLocalStream();
+            this.loadRooms();
+        } finally {
+            this.joining = false;
         }
     }
 
-    async leaveRoom() {
-        if (this.room.currentRoom) {
-            try {
-                // If current user is the host, attempt to transfer host to another participant before leaving
-                if (this.room.hostUserId === this.room.user.id && this.room.participants && this.room.participants.size > 0) {
-                    const nextHostId = this.room.participants.keys().next().value;
-                    if (nextHostId) {
-                        // Optimistically transfer locally and notify server
-                        this.room.hostUserId = nextHostId;
-                        this.room.handleHostTransfer({ newHostUserId: nextHostId });
-                        this.room.sendSignal('transfer-host', { newHostUserId: nextHostId });
-                    }
-                }
+    notifyLeave(roomId) {
+        fetch(`${CONFIG.API_BASE}/api/rooms/${roomId}/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: this.room.user.id })
+        }).catch(() => { });
+    }
 
-                await fetch(`${CONFIG.API_BASE}/api/rooms/${this.room.currentRoom.id}/leave`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: this.room.user.id })
-                }).catch(() => { });
-            } catch (err) {
-                console.warn('leaveRoom: transfer attempt failed', err);
-            }
-        }
-
+    async leaveRoom(opts = {}) {
+        const room = this.room.currentRoom;
+        // 先清掉 currentRoom，避免 socket 關閉時跳出「已斷開連線」
         this.room.currentRoom = null;
+        // 房主離開時，伺服器會自動把房主交給下一位成員
+        if (room && !opts.skipServer) this.notifyLeave(room.id);
+
+        this.room.stopStatsMonitor();
+        if (this.room.isScreenSharing) await this.room.stopScreenShare();
         this.room.stopLocalStream();
         if (this.room.socket) this.room.socket.close();
         this.room.peers.forEach(p => p.pc.close());
         this.room.peers.clear();
+        this.room.participants = new Map();
+        this.room.muted = new Set();
+        this.room.queueState = null;
+        this.room.mode = 'call';
+        this.ui.clearPollDisplay();
 
         this.ui.clearConference();
         this.ui.toggleConferenceMode(false);
         this.loadRooms();
+    }
+
+    handleKicked(byName) {
+        this.leaveRoom({ skipServer: true });
+        this.ui.showNotification(`你已被房主${byName ? ' ' + byName + ' ' : ''}移出房間`, true);
     }
 
     sendMessage() {
